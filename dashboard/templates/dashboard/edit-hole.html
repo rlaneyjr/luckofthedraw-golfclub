@@ -1,0 +1,14 @@
+{% extends "base-dashboard.html" %}
+{% load crispy_forms_tags %}
+
+{% block button_bar %}
+<a href="{% url 'dashboard:hole_detail' hole_data.id %}" class="btn btn-sm btn-outline-secondary">Back to Hole Detail</a>
+{% endblock %}
+
+{% block content %}
+{% crispy form %}
+{% endblock %}
+
+{% block page_styles %}{% endblock %}
+
+{% block page_scripts %}{% endblock %}

@@ -1,0 +1,157 @@
+{% extends "base-dashboard.html" %}
+{% load djmoney %}
+{% load custom_parser %}
+
+{% block page_name %}Game Score Detail{% endblock %}
+
+{% block button_bar %}
+<a href="{% url 'dashboard:game_detail' game_data.id %}" class="btn btn-sm btn-outline-secondary">Back to Game Detail</a>
+{% endblock %}
+
+{% block content %}
+{% if current_scores %}
+<div class="row mt-3 mb-3">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header fw-bold">
+        Current Scores
+      </div>
+      <div class="card-body">
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th style="width: 5%;">&nbsp;</th>
+              <th>Player</th>
+              {% if game_data.use_teams %}
+              <th>Team</th>
+              {% endif %}
+              <th>Hole #</th>
+              <th>Handicap</th>
+              <th>Par</th>
+              <th>Strokes</th>
+              <th>Score</th>
+              <th>Points</th>
+            </tr>
+          </thead>
+          <tbody class="align-middle">
+            {% for score in current_scores %}
+            <tr>
+              <td><a href="{% url 'dashboard:edit_hole_score' score.id %}" class="btn btn-primary btn-sm">Edit</a></td>
+              <td>{{score.player.player.name}}</td>
+              {% if game_data.use_teams %}
+              <td>{{score.player.team.name}}</td>
+              {% endif %}
+              <td>{{score.hole.order}}</td>
+              <td>{{score.hole.handicap}}</td>
+              <td>{{score.hole.par}}</td>
+              <td>{{score.strokes}}</td>
+              <td>{{score.score}}</td>
+              <td>{{score.points}}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% else %}
+
+{% get_scores game_data as player_scores %}
+{% for player in player_scores %}
+<div class="row mt-3 mb-3">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header fw-bold">
+        {% if game_data.use_teams %}
+          {{ player.team_name }} - {{ player.player_name }} Scores
+        {% else %}
+          {{ player.player_name }} Scores
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th>Hole #</th>
+              <th>Handicap</th>
+              <th>Par</th>
+              <th>Strokes</th>
+              <th>Score</th>
+              <th>Points</th>
+            </tr>
+          </thead>
+          <tbody class="align-middle">
+            {% for score in player.hole_list %}
+            <tr>
+              <td>{{score.hole_order}}</td>
+              <td>{{score.hole_handicap}}</td>
+              <td>{{score.hole_par}}</td>
+              <td>{{score.hole_strokes}}</td>
+              <td>{{score.hole_score}}</td>
+              <td>{{score.hole_points}}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="card-footer fw-bold">
+        {% if game_data.use_teams %}
+        Team HCP:{{player.team_hcp}} Score:{{player.player_score}} Needed:{{player.points_needed}} Made:{{player.player_points}} Points:{{player.game_points}}
+        {% else %}
+        Game HCP:{{player.game_hcp}} Score:{{player.player_score}} Needed:{{player.points_needed}} Made:{{player.player_points}} Points:{{player.game_points}}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+{% get_all_scores game_data as final_scores %}
+<div class="row mt-3">
+  <div class="col-12">
+    {% for hole in final_scores %}
+    <div class="card">
+      <div class="card-header">
+        Hole#: {{ hole.order }} Par: {{ hole.par }} HCP: {{ hole.handicap }}
+      </div>
+      <div class="card-body">
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th>Player</th>
+              <th>Strokes</th>
+              <th>Score</th>
+              <th>Points</th>
+              {% if game_data.use_skins %}
+              <th>Skins</th>
+              {% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for score in hole.scores %}
+            <tr>
+              <td>{{ score.player }}</td>
+              <td>{{ score.strokes }}</td>
+              <td>{{ score.score }}</td>
+              <td>{{ score.points }}</td>
+              {% if game_data.use_skins %}
+              <td>{{ score.skins }}</td>
+              {% endif %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% endblock content %}
+
+{% block page_styles %}{% endblock %}
+
+{% block page_scripts %}
+{% endblock page_scripts %}

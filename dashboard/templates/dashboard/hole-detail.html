@@ -1,0 +1,151 @@
+{% extends "base-dashboard.html" %}
+{% load crispy_forms_tags %}
+
+{% block page_name %}Hole Detail{% endblock %}
+
+{% block button_bar %}
+<a href="{% url 'dashboard:course_detail' course_data.id %}" class="btn btn-sm btn-outline-secondary">Back to Course Detail</a>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-6">
+    <div class="card">
+      <div class="card-header fw-bold">
+        Hole
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="fw-bold d-block">Name:</label>
+          <span class="ps-3">{{hole_data.name}}</span>
+        </div>
+        <div class="mb-3">
+          <label class="fw-bold d-block">Nickname:</label>
+          <span class="ps-3">{{hole_data.nickname}}</span>
+        </div>
+        <div class="mb-3">
+          <label class="fw-bold d-block">Order:</label>
+          <span class="ps-3">{{hole_data.order}}</span>
+        </div>
+        <div>
+          <label class="fw-bold d-block">Par:</label>
+          <span class="ps-3">{{hole_data.par}}</span>
+        </div>
+        <div>
+          <label class="fw-bold d-block">Handicap:</label>
+          <span class="ps-3">{{hole_data.handicap}}</span>
+        </div>
+      </div>
+      <div class="card-footer">
+        <a href="{% url 'dashboard:edit_hole' hole_data.id %}" class="btn btn-primary btn-sm">Edit Hole</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-6">
+    <div class="card">
+      <div class="card-header fw-bold">
+        Tees
+      </div>
+      <div class="card-body">
+        {% if tee_list %}
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width: 5%;">&nbsp;</th>
+              <th>Color</th>
+              <th>Distance</th>
+            </tr>
+          </thead>
+          <tbody class="align-middle">
+            {% for tee in tee_list %}
+            <tr>
+              <td><button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#delete-tee-modal" data-tee-id="{{ tee.id }}">Delete</button></td>
+              <td>{{tee.color}}</td>
+              <td>{{tee.distance}}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="card-text">No tees found for this hole</p>
+        {% endif %}
+      </div>
+      <div class="card-footer">
+        <a href="{% url 'dashboard:create_tee' hole_data.id %}" class="btn btn-primary btn-sm">Add Tee</a>
+      </div>
+    </div>
+  </div>
+  {% if course_data.card %}
+  <div class="col-12">
+    <img src="{{course_data.card.url}}" class="img-fluid img-thumbnail" alt="{{course_data.name}} Card">
+  </div>
+  {% endif %}
+</div>
+
+<div class="modal fade" id="delete-tee-modal" tabindex="-1" aria-labelledby="delete-tee-modal-label" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="delete-tee-modal-label">Confirm Delete Tee</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to delete this tee?  This cannot be undone.
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-danger" id="confirm-delete-tee-button">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block page_styles %}{% endblock %}
+
+{% block page_scripts %}
+<script>
+  const deleteTeeUrl = "{% url 'dashboard:ajax_delete_tee' %}";
+  const csrfToken = "{{csrf_token}}";
+  let deleteTeeId = null;
+
+  document.getElementById("delete-tee-modal").addEventListener("show.bs.modal", (event) => {
+    const buttonClicked = event.relatedTarget;
+    deleteTeeId = buttonClicked.dataset.teeId;
+  });
+
+  document.getElementById("delete-tee-modal").addEventListener("hide.bs.modal", (event) => {
+    deleteTeeId = null;
+  });
+
+  document.getElementById("confirm-delete-tee-button").addEventListener("click", async (event) => {
+    if (deleteTeeId === null) {
+      return;
+    }
+    const data = {
+      tee_id: deleteTeeId,
+    }
+    try {
+      const response = await fetch(deleteTeeUrl, {
+        method: "POST",
+        headers: {
+          "X-CSRFToken": csrfToken,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(data)
+      });
+      if (!response.ok) {
+        throw new Error("Error sending request");
+        return;
+      }
+      const jsonData = await response.json();
+      if (jsonData.status === "success") {
+        return window.location.reload(true);
+      }
+    } catch(e) {
+      console.log("Error: ", e.message)
+    }
+  });
+</script>
+{% endblock %}

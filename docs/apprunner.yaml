@@ -1,0 +1,25 @@
+version: 1.0
+runtime: python312
+build:
+  commands:
+    build:
+      - pip3 install -r requirements.txt
+  env:
+    - name: DJANGO_SETTINGS_MODULE
+      value: "config.settings.production"
+    - name: DEFAULT_CURRENCY
+      value: "USD"
+    - name: DJANGO_SECRET_KEY
+      value: "&=*z=!phlm3q!c_x8481kat49hrh^1-sxhul+bmy=(qnp2b1+("
+run:
+  runtime-version: 3.12
+  command: sh startup.sh
+  network:
+    port: 8000
+  env:
+    - name: DJANGO_SETTINGS_MODULE
+      value: "config.settings.production"
+    - name: DEFAULT_CURRENCY
+      value: "USD"
+    - name: DJANGO_SECRET_KEY
+      value: "&=*z=!phlm3q!c_x8481kat49hrh^1-sxhul+bmy=(qnp2b1+("
