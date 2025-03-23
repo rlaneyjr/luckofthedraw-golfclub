@@ -66,6 +66,10 @@
           {% endif %}
         {% endif %}
         <div class="mb-3">
+          <label class="fw-bold d-block">Groups:</label>
+          <span class="ps-2">{{ game_data.use_groups }}</span>
+        </div>
+        <div class="mb-3">
           <label class="fw-bold d-block">Teams:</label>
           <span class="ps-2">{{ game_data.use_teams }}</span>
         </div>
@@ -210,6 +214,34 @@
               {% format_list team.players as team_players %}
               <td>{{ team_players }}</td>
               <td>{{ team.handicap }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+  {% if groups %}
+  <div class="col-4">
+    <div class="card">
+      {% for group in groups %}
+      <div class="card-header">
+        {{ group.name }}
+      </div>
+      <div class="card-body">
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th>Player</th>
+              <th>HCP</th>
+            </tr>
+          </thead>
+          <tbody class="align-middle">
+            {% for player in group.players %}
+            <tr>
+              <td>{{ player.player.name }}</td>
+              <td>{{ player.player.handicap }}</td>
             </tr>
             {% endfor %}
           </tbody>

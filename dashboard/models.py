@@ -34,6 +34,12 @@ class PayoutChoices(models.IntegerChoices):
     _3 = 3
 
 
+class GroupNameChoices(models.TextChoices):
+    EAGLE = "Eagle", _("Eagle")
+    BIRDIE = "Birdie", _("Birdie")
+    PAR = "Par", _("Par")
+
+
 class HoleNameChoices(models.TextChoices):
     HOLE_1 = "Hole1", _("Hole 1")
     HOLE_2 = "Hole2", _("Hole 2")
@@ -150,7 +156,10 @@ class GolfCourse(models.Model):
         ordering = ["state", "city"]
 
     def __str__(self):
-        return self.name
+        return f"{self.initials}"
+
+    def __repr__(self):
+        return f"Course[{self.initials}]"
 
     @property
     def par(self):
@@ -183,7 +192,10 @@ class Hole(models.Model):
     )
 
     def __str__(self):
-        return f"{self.course.initials} - {self.name}"
+        return f"{self.course} - {self.name}"
+
+    def __repr__(self):
+        return f"Hole[{self.course}:{self.name}]"
 
     class Meta:
         unique_together = ["name", "course", "order", "handicap"]
@@ -205,6 +217,9 @@ class Tee(models.Model):
 
     def __str__(self):
         return f"{self.hole} - {self.color}"
+
+    def __repr__(self):
+        return f"Tee[{self.hole}:{self.color}]"
 
     class Meta:
         unique_together = ["hole", "color"]
@@ -267,6 +282,7 @@ class Game(models.Model):
         ],
     )
     score = models.JSONField(blank=True, null=True)
+    use_groups = models.BooleanField(default=True)
     use_teams = models.BooleanField(default=False)
     use_skins = models.BooleanField(default=True)
     league_game = models.BooleanField(default=True)
@@ -294,9 +310,15 @@ class Game(models.Model):
 
     def __str__(self):
         if self.status == GameStatusChoices.COMPLETED:
-            return f"{self.course.initials} - {self.date_played.date()}"
+            return f"{self.course}-{self.date_played.date()}"
         else:
-            return f"{self.course.initials} - {self.status}"
+            return f"{self.course}-{self.status}"
+
+    def __repr__(self):
+        if self.status == GameStatusChoices.COMPLETED:
+            return f"Game[{self.course}:{self.date_played.date()}]"
+        else:
+            return f"Game[{self.course}:{self.status}]"
 
     def start(self, **kwargs):
         for key, value in kwargs.items():
@@ -317,6 +339,8 @@ class Game(models.Model):
         utils.create_hole_scores_for_game(self)
         if self.use_teams:
             utils.create_teams_for_game(self)
+        if self.use_groups:
+            utils.create_groups_for_game(self)
         self.status = GameStatusChoices.ACTIVE
         self.save()
 
@@ -348,18 +372,8 @@ class Game(models.Model):
 
 
 class Player(models.Model):
-    first_name = models.CharField(
-        max_length=32,
-        default=None,
-        blank=True,
-        null=True
-    )
-    last_name = models.CharField(
-        max_length=32,
-        default=None,
-        blank=True,
-        null=True
-    )
+    first_name = models.CharField(max_length=32)
+    last_name = models.CharField(max_length=32)
     email = models.EmailField(
         max_length=254,
         default=None,
@@ -403,9 +417,12 @@ class Player(models.Model):
     def __str__(self):
         return self.name
 
+    def __repr__(self):
+        return f"Player[{self.name}]"
+
     class Meta:
         unique_together = ["first_name", "last_name"]
-        ordering = ["last_name", "first_name"]
+        ordering = ["handicap", "last_name", "first_name"]
         verbose_name_plural = "players"
 
 
@@ -422,11 +439,38 @@ class Team(models.Model):
     )
 
     def __str__(self):
-        return f"{self.game} - {self.name}"
+        return f"{self.name}"
+
+    def __repr__(self):
+        return f"Team[{self.name}]"
 
     class Meta:
         ordering = ["game", "name"]
         verbose_name_plural = "teams"
+
+
+class Group(models.Model):
+    name = models.CharField(
+        max_length=32,
+        choices=GroupNameChoices.choices,
+        default=GroupNameChoices.PAR,
+    )
+    game = models.ForeignKey(Game, on_delete=models.CASCADE)
+    players = models.ManyToManyField(
+        "Player",
+        through="PlayerMembership",
+        through_fields=("group", "player")
+    )
+
+    def __str__(self):
+        return f"{self.name}"
+
+    def __repr__(self):
+        return f"Group[{self.name}]"
+
+    class Meta:
+        ordering = ["game", "name", "players"]
+        verbose_name_plural = "groups"
 
 
 class PlayerMembership(models.Model):
@@ -434,6 +478,13 @@ class PlayerMembership(models.Model):
     player = models.ForeignKey(Player, on_delete=models.CASCADE)
     team = models.ForeignKey(
         Team,
+        on_delete=models.SET_DEFAULT,
+        default=None,
+        blank=True,
+        null=True
+    )
+    group = models.ForeignKey(
+        Group,
         on_delete=models.SET_DEFAULT,
         default=None,
         blank=True,
@@ -462,9 +513,19 @@ class PlayerMembership(models.Model):
 
     def __str__(self):
         if self.team:
-            return f"{self.player} - {self.team}"
+            return f"{self.game} - {self.team} - {self.player}"
+        elif self.group:
+            return f"{self.game} - {self.group} - {self.player}"
         else:
-            return f"{self.player} - {self.game}"
+            return f"{self.game} - {self.player}"
+
+    def __repr__(self):
+        if self.team:
+            return f"PlayerMembership[{self.game}:{self.team}:{self.player}]"
+        elif self.group:
+            return f"PlayerMembership[{self.game}:{self.group}:{self.player}]"
+        else:
+            return f"PlayerMembership[{self.game}:{self.player}]"
 
     class Meta:
         unique_together = ["game", "player"]
@@ -537,6 +598,9 @@ class HoleScore(models.Model):
     def __str__(self):
         return f"{self.player} - {self.hole}"
 
+    def __str__(self):
+        return f"HoleScore[{self.player}:{self.hole}]"
+
     def score_hole(self, strokes: int=None):
         if strokes is not None:
             self.strokes = strokes
@@ -568,7 +632,10 @@ class TeeTime(models.Model):
     is_active = models.BooleanField(default=True)
 
     def __str__(self):
-        return f"{self.course.initials} - {self.tee_time.date()}"
+        return f"{self.course} - {self.tee_time.date()}"
+
+    def __repr__(self):
+        return f"TeeTime[{self.course}:{self.tee_time.date()}]"
 
     def clean(self):
         num_holes = self.course.hole_count - self.holes_to_play

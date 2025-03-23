@@ -111,6 +111,10 @@ def get_team_list_for_game(game):
     return team_list
 
 
+def get_groups_for_game(game):
+    return models.Group.objects.filter(game__in=[game.id])
+
+
 def get_par_for_course(course):
     holes = models.Hole.objects.filter(course=course).order_by("order")
     return sum([h.par for h in holes])
@@ -175,7 +179,7 @@ def calculate_teams(player_count):
     if player_count == 4:
         return 2, 2
     if player_count < 4:
-        return 0, player_count
+        return 1, player_count
     if player_count % 4 == 0:
         return round(player_count/4), 4
     if player_count % 3 == 0:
@@ -186,6 +190,36 @@ def calculate_teams(player_count):
     if num_teams == 0:
         return 0, player_count
     return num_teams, num_players, 1
+
+
+def create_groups_for_game(game):
+    '''
+    Divide players into 3 groups based on handicap.
+    Eagle Group - Top 1/3 of players with lowest handicap
+    Birdie Group - Middle 1/3 of players with lowest handicap
+    Par Group - Bottom 1/3 of players with lowest handicap
+    '''
+    count = 0
+    eagle_group = models.Group(name=models.GroupNameChoices.EAGLE, game=game)
+    birdie_group = models.Group(name=models.GroupNameChoices.BIRDIE, game=game)
+    par_group = models.Group(game=game)
+    eagle_group.save()
+    birdie_group.save()
+    par_group.save()
+    players = game.players.all().order_by("-handicap")
+    third_of_players = round(players.count()/3)
+    for player in players:
+        count += 1
+        player_mem = models.PlayerMembership.objects.filter(game=game, player=player).first()
+        if count <= third_of_players:
+            player_mem.group = eagle_group
+            player_mem.save()
+        elif count <= (third_of_players*2):
+            player_mem.group = birdie_group
+            player_mem.save()
+        else:
+            player_mem.group = par_group
+            player_mem.save()
 
 
 def create_teams_for_game(game):
@@ -340,13 +374,17 @@ def get_hole_data_for_game(game, final_scores=False):
     hole_data = []
     # Always keep track of each players score
     for player in game.players.all():
+        player_mem = models.PlayerMembership.objects.filter(
+            game=game, player=player
+        ).first()
         player_data = {
             "course_name": game.course.name,
             "player_id": player.id,
             "player_name": player.name,
             "hcp": float(player.handicap),
-            "skins": None,
-            "points_needed": None,
+            "skins": player_mem.skins,
+            "points_needed": player_mem.points_needed,
+            "group": None,
             "team_id": None,
             "team_name": None,
             "team_hcp": None,
@@ -359,15 +397,12 @@ def get_hole_data_for_game(game, final_scores=False):
             "winner": False,
             "money": 0,
         }
-        player_mem = models.PlayerMembership.objects.filter(
-            game=game, player=player
-        ).first()
-        player_data["skins"] = player_mem.skins
-        player_data["points_needed"] = player_mem.points_needed
         if game.use_teams and player_mem.team != None:
             player_data["team_id"] = player_mem.team.id
             player_data["team_name"] = player_mem.team.name
             player_data["team_hcp"] = str(player_mem.team.handicap)
+        if game.use_groups and player_mem.group != None:
+            player_data["group"] = player_mem.group.name
         hole_score_list = models.HoleScore.objects.filter(player=player_mem)
         for hole_score in hole_score_list:
             player_data["hole_list"].append(
@@ -415,6 +450,7 @@ def get_all_scores_for_game(game):
             ).first()
             hole_score = {
                 "player": player.name,
+                "group": player_mem.group,
                 "strokes": hole_score.strokes,
                 "points": hole_score.points,
                 "score": hole_score.score,

@@ -131,7 +131,7 @@ def hole_detail(request, pk):
 
 @login_required
 def game_detail(request, pk):
-    team_list = False
+    team_list = groups = False
     game_data = get_object_or_404(models.Game, pk=pk)
     current_player_count = game_data.players.count()
     current_players = utils.get_current_players_for_game(game_data)
@@ -140,6 +140,8 @@ def game_detail(request, pk):
     hole_data = utils.get_hole_data_for_game(game_data)
     if game_data.use_teams:
         team_list = utils.get_team_list_for_game(game_data)
+    if game_data.use_groups:
+        groups = utils.get_groups_for_game(game_data)
     return render(
         request,
         "dashboard/game-detail.html",
@@ -147,6 +149,7 @@ def game_detail(request, pk):
             "user_is_admin": utils.is_admin(request.user),
             "game_data": game_data,
             "team_list": team_list,
+            "groups": groups,
             "player_list": player_list,
             "current_player_count": current_player_count,
             "current_players": current_players,
