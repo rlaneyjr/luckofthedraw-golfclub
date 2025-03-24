@@ -192,7 +192,7 @@ class Hole(models.Model):
     )
 
     def __str__(self):
-        return f"{self.course} - {self.name}"
+        return f"{self.course}-{self.name}"
 
     def __repr__(self):
         return f"Hole[{self.course}:{self.name}]"
@@ -216,7 +216,7 @@ class Tee(models.Model):
     )
 
     def __str__(self):
-        return f"{self.hole} - {self.color}"
+        return f"{self.hole}-{self.color}"
 
     def __repr__(self):
         return f"Tee[{self.hole}:{self.color}]"
@@ -439,10 +439,10 @@ class Team(models.Model):
     )
 
     def __str__(self):
-        return f"{self.name}"
+        return f"{self.game}-{self.name}"
 
     def __repr__(self):
-        return f"Team[{self.name}]"
+        return f"Team[{self.game}:{self.name}]"
 
     class Meta:
         ordering = ["game", "name"]
@@ -463,13 +463,13 @@ class Group(models.Model):
     )
 
     def __str__(self):
-        return f"{self.name}"
+        return f"{self.game}-{self.name}"
 
     def __repr__(self):
-        return f"Group[{self.name}]"
+        return f"Group[{self.game}:{self.name}]"
 
     class Meta:
-        ordering = ["game", "name", "players"]
+        ordering = ["game", "name"]
         verbose_name_plural = "groups"
 
 
@@ -512,20 +512,15 @@ class PlayerMembership(models.Model):
         return self.game.points - utils.round_up(self.player.handicap)
 
     def __str__(self):
+        name = f"{self.game}"
+        if self.group:
+            name = f"{name}-{self.group}"
         if self.team:
-            return f"{self.game} - {self.team} - {self.player}"
-        elif self.group:
-            return f"{self.game} - {self.group} - {self.player}"
-        else:
-            return f"{self.game} - {self.player}"
+            name = f"{name}-{self.team}"
+        return f"{name}-{self.player}"
 
     def __repr__(self):
-        if self.team:
-            return f"PlayerMembership[{self.game}:{self.team}:{self.player}]"
-        elif self.group:
-            return f"PlayerMembership[{self.game}:{self.group}:{self.player}]"
-        else:
-            return f"PlayerMembership[{self.game}:{self.player}]"
+        return f"PlayerMembership[{str(self).replace('-', ':')}]"
 
     class Meta:
         unique_together = ["game", "player"]
@@ -596,7 +591,7 @@ class HoleScore(models.Model):
         return _("Double Bogey Max")
 
     def __str__(self):
-        return f"{self.player} - {self.hole}"
+        return f"{self.player}-{self.hole}"
 
     def __str__(self):
         return f"HoleScore[{self.player}:{self.hole}]"
@@ -632,7 +627,7 @@ class TeeTime(models.Model):
     is_active = models.BooleanField(default=True)
 
     def __str__(self):
-        return f"{self.course} - {self.tee_time.date()}"
+        return f"{self.course}-{self.tee_time.date()}"
 
     def __repr__(self):
         return f"TeeTime[{self.course}:{self.tee_time.date()}]"

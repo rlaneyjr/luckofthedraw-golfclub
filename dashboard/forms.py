@@ -2,8 +2,24 @@ from django import forms
 from django.forms.widgets import SplitDateTimeWidget
 from django_json_widget.widgets import JSONEditorWidget
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Layout, Field, Div, Fieldset, Submit
-from .models import GolfCourse, Tee, Team, Player, Game, Hole, HoleScore, TeeTime
+from crispy_forms.layout import (
+    Layout,
+    Field,
+    Div,
+    Fieldset,
+    Submit
+)
+from .models import (
+    GolfCourse,
+    Tee,
+    Team,
+    Player,
+    Game,
+    Group,
+    Hole,
+    HoleScore,
+    TeeTime
+)
 
 
 class GolfCourseForm(forms.ModelForm):
@@ -116,6 +132,24 @@ class EditTeeForm(forms.ModelForm):
         fields = ["color", "distance"]
 
 
+class EditGroupForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.layout = Layout(
+            Fieldset(
+                "Edit Group",
+                "name",
+                "players",
+            ),
+            Submit("submit", "Submit", css_class="btn btn-primary btn-sm"),
+        )
+
+    class Meta:
+        model = Group
+        exclude = ["game"]
+
+
 class EditTeamForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -194,6 +228,7 @@ class GameForm(forms.ModelForm):
                 "which_holes",
                 "buy_in",
                 "skin_cost",
+                "use_groups",
                 "use_teams",
                 "use_skins",
                 "league_game",
@@ -211,6 +246,7 @@ class GameForm(forms.ModelForm):
             "which_holes",
             "buy_in",
             "skin_cost",
+            "use_groups",
             "use_teams",
             "use_skins",
             "league_game",
@@ -240,6 +276,7 @@ class EditGameForm(forms.ModelForm):
                 "which_holes",
                 "buy_in",
                 "skin_cost",
+                "use_groups",
                 "use_teams",
                 "use_skins",
                 "league_game",
@@ -258,6 +295,7 @@ class EditGameForm(forms.ModelForm):
             "which_holes",
             "buy_in",
             "skin_cost",
+            "use_groups",
             "use_teams",
             "use_skins",
             "league_game",

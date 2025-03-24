@@ -71,13 +71,7 @@ def get_current_players_for_game(game):
     current_players = []
     for player in game.players.all():
         player_mem = models.PlayerMembership.objects.filter(game=game, player=player).first()
-        current_players.append({
-            "id": player.id,
-            "name": player.name,
-            "hcp": player.handicap,
-            "points_needed": player_mem.points_needed,
-            "skins": player_mem.skins,
-        })
+        current_players.append((player, player_mem))
     return current_players
 
 
@@ -135,7 +129,7 @@ def get_par_for_game(game):
 
 
 def clean_game(game):
-    if game.league_game:
+    if (game.status == models.GameStatusChoices.COMPLETED) and game.league_game:
         for player in game.players.all():
             for score in game.score.get("scores"):
                 if score.get("player_id") == player.id:
@@ -192,36 +186,6 @@ def calculate_teams(player_count):
     return num_teams, num_players, 1
 
 
-def create_groups_for_game(game):
-    '''
-    Divide players into 3 groups based on handicap.
-    Eagle Group - Top 1/3 of players with lowest handicap
-    Birdie Group - Middle 1/3 of players with lowest handicap
-    Par Group - Bottom 1/3 of players with lowest handicap
-    '''
-    count = 0
-    eagle_group = models.Group(name=models.GroupNameChoices.EAGLE, game=game)
-    birdie_group = models.Group(name=models.GroupNameChoices.BIRDIE, game=game)
-    par_group = models.Group(game=game)
-    eagle_group.save()
-    birdie_group.save()
-    par_group.save()
-    players = game.players.all().order_by("-handicap")
-    third_of_players = round(players.count()/3)
-    for player in players:
-        count += 1
-        player_mem = models.PlayerMembership.objects.filter(game=game, player=player).first()
-        if count <= third_of_players:
-            player_mem.group = eagle_group
-            player_mem.save()
-        elif count <= (third_of_players*2):
-            player_mem.group = birdie_group
-            player_mem.save()
-        else:
-            player_mem.group = par_group
-            player_mem.save()
-
-
 def create_teams_for_game(game):
     '''
     Not doing below. All random at the moment.
@@ -272,6 +236,49 @@ def create_teams_for_game(game):
     for team in new_teams:
         team.handicap = get_team_hcp(team, game)
         team.save()
+
+
+def create_groups_for_game(game):
+    '''
+    Divide players into 3 groups based on handicap.
+    Eagle Group - Top 1/3 of players with lowest handicap
+    Birdie Group - Middle 1/3 of players with lowest handicap
+    Par Group - Bottom 1/3 of players with lowest handicap
+    '''
+    count = 0
+    current_groups = get_groups_for_game(game)
+    if current_groups and len(current_groups):
+        if len(current_groups) == 3:
+            for grp in current_groups:
+                if grp.name == models.GroupNameChoices.EAGLE:
+                    eagle_group = grp
+                elif grp.name == models.GroupNameChoices.BIRDIE:
+                    birdie_group = grp
+                else:
+                    par_group = grp
+        else:
+            raise BaseException(
+                f"There must be 3 but only {len(current_groups)} groups exist."
+            )
+    else:
+        eagle_group = models.Group(name=models.GroupNameChoices.EAGLE, game=game)
+        birdie_group = models.Group(name=models.GroupNameChoices.BIRDIE, game=game)
+        par_group = models.Group(game=game)
+        eagle_group.save()
+        birdie_group.save()
+        par_group.save()
+    players = game.players.all().order_by("-handicap")
+    players_per_group = round(players.count()/3)
+    for player in players:
+        count += 1
+        player_mem = models.PlayerMembership.objects.filter(game=game, player=player).first()
+        if count <= players_per_group:
+            player_mem.group = eagle_group
+        elif count <= (players_per_group*2):
+            player_mem.group = birdie_group
+        else:
+            player_mem.group = par_group
+        player_mem.save()
 
 
 def get_team_score(team):

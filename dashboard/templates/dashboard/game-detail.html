@@ -106,7 +106,7 @@
       </div>
     </div>
   </div>
-  {% if team_list %}
+  {% if team_list or groups %}
   <div class="col-4">
   {% else %}
   <div class="col-6">
@@ -163,7 +163,7 @@
             </tr>
           </thead>
           <tbody class="align-middle">
-            {% for player in current_players %}
+            {% for player, player_mem in current_players %}
             <tr>
               {% if game_data.status == "setup" %}
               <td><button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#remove-player-modal" data-player-id="{{ player.id }}">Remove</button></td>
@@ -171,10 +171,10 @@
               <td>{{ player.name }}</td>
               <td>{{ player.hcp }}</td>
               {% if game_data.game_type == "stableford" %}
-              <td>{{ player.points_needed }}</td>
+              <td>{{ player_mem.points_needed }}</td>
               {% endif %}
               {% if game_data.use_skins %}
-              <td>{{ player.skins }}</td>
+              <td>{{ player_mem.skins }}</td>
               {% endif %}
             </tr>
             {% endfor %}
@@ -238,7 +238,7 @@
             </tr>
           </thead>
           <tbody class="align-middle">
-            {% for player in group.players %}
+            {% for player in group.players.all %}
             <tr>
               <td>{{ player.player.name }}</td>
               <td>{{ player.player.handicap }}</td>
@@ -247,6 +247,7 @@
           </tbody>
         </table>
       </div>
+      {% endfor %}
     </div>
   </div>
   {% endif %}
