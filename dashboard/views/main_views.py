@@ -131,30 +131,37 @@ def hole_detail(request, pk):
 
 @login_required
 def game_detail(request, pk):
-    team_list = hole_data = hole_list = groups = False
+    hole_data = hole_list = False
     game_data = get_object_or_404(models.Game, pk=pk)
-    current_player_count = game_data.players.count()
-    current_players = utils.get_current_players_for_game(game_data)
-    player_list = utils.get_players_not_in_game(game_data)
-    if game_data.status in ["completed", "active"]:
-        if game_data.use_teams:
-            team_list = utils.get_team_list_for_game(game_data)
-        if game_data.use_groups:
-            groups = utils.get_groups_for_game(game_data)
-        if game_data.status == "active":
-            hole_list = utils.get_hole_list_for_game(game_data)
-            hole_data = utils.get_hole_data_for_game(game_data)
+    if game_data.status == "active":
+        hole_list = utils.get_hole_list_for_game(game_data)
+        hole_data = utils.get_hole_data_for_game(game_data)
     return render(
         request,
         "dashboard/game-detail.html",
         {
             "user_is_admin": utils.is_admin(request.user),
             "game_data": game_data,
-            "team_list": team_list,
-            "groups": groups,
-            "player_list": player_list,
-            "current_player_count": current_player_count,
-            "current_players": current_players,
+            "players_not_in_game": utils.get_players_not_in_game(game_data),
+            "current_player_count": game_data.players.count(),
+            "current_mems": utils.get_game_player_mems(game_data),
+            "hole_data": hole_data,
+            "hole_list": hole_list,
+        },
+    )
+
+
+@login_required
+def game_current_scores(request, pk):
+    game_data = get_object_or_404(models.Game, pk=pk)
+    hole_list = utils.get_hole_list_for_game(game_data)
+    hole_data = utils.get_hole_data_for_game(game_data)
+    return render(
+        request,
+        "dashboard/game-current-scores.html",
+        {
+            "user_is_admin": utils.is_admin(request.user),
+            "game_data": game_data,
             "hole_data": hole_data,
             "hole_list": hole_list,
         },
@@ -185,10 +192,16 @@ def game_score_detail(request, pk):
                 game=game_data, player=player
             ).first()
             if filter_scores == "true":
-                hole_score_list = models.HoleScore.objects.filter(player=player_game_link, strokes__gt=0)
+                current_scores.extend(
+                    models.HoleScore.objects.filter(
+                        player=player_game_link,
+                        strokes__gt=0
+                    )
+                )
             else:
-                hole_score_list = models.HoleScore.objects.filter(player=player_game_link)
-            current_scores.extend(hole_score_list)
+                current_scores.extend(
+                    models.HoleScore.objects.filter(player=player_game_link)
+                )
         return render(
             request,
             "dashboard/game-score-detail.html",
@@ -491,5 +504,55 @@ def edit_hole_score(request, pk):
             "form": form,
             "hole_score_data": hole_score_data,
             "hole_score_id": pk
+        }
+    )
+
+
+@login_required
+@user_passes_test(
+    utils.is_admin,
+    login_url="/no-permission/",
+    redirect_field_name=None
+)
+def edit_team(request, pk):
+    team_data = get_object_or_404(models.Team, pk=pk)
+    if request.method == "POST":
+        form = forms.EditTeamForm(request.POST, instance=team_data)
+        if form.is_valid():
+            form.save()
+            messages.add_message(request, messages.INFO, "Team updated.")
+            return redirect("dashboard:game_detail", pk)
+    form = forms.EditTeamForm(instance=team_data)
+    return render(
+        request, "dashboard/edit-team.html",
+        {
+            "form": form,
+            "team_data": team_data,
+            "team_id": pk
+        }
+    )
+
+
+@login_required
+@user_passes_test(
+    utils.is_admin,
+    login_url="/no-permission/",
+    redirect_field_name=None
+)
+def edit_group(request, pk):
+    group_data = get_object_or_404(models.Group, pk=pk)
+    if request.method == "POST":
+        form = forms.EditGroupForm(request.POST, instance=group_data)
+        if form.is_valid():
+            form.save()
+            messages.add_message(request, messages.INFO, "Group updated.")
+            return redirect("dashboard:game_detail", pk)
+    form = forms.EditGroupForm(instance=group_data)
+    return render(
+        request, "dashboard/edit-group.html",
+        {
+            "form": form,
+            "group_data": group_data,
+            "group_id": pk
         }
     )

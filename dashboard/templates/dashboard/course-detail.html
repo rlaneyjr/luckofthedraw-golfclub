@@ -8,37 +8,45 @@
 
 {% block content %}
 <div class="row mb-3">
-  <div class="col-6">
+  <div class="col-8">
     <div class="card">
       <div class="card-header fw-bold">
         Course
       </div>
       <div class="card-body">
-        <div class="mb-3">
-          <label class="fw-bold d-block">Name:</label>
-          <span class="ps-2">{{course_data.name}}</span>
+        <div class="mb-2">
+          <label class="fw-bold">Name:</label>
+          <span class="ps-1">{{course_data.name}}</span>
         </div>
-        <div class="mb-3">
-          <label class="fw-bold d-block">Holes:</label>
-          <span class="ps-2">{{course_data.get_hole_count_display}}</span>
-        </div>
-        <div class="mb-3">
-          <label class="fw-bold d-block">Par:</label>
-          <span class="ps-2">{{course_data.par}}</span>
+        <div class="mb-2">
+          <label class="fw-bold">Holes:</label>
+          <span class="ps-1">{{course_data.get_hole_count_display}}</span>
         </div>
         {% if course_location %}
-        <div class="mb-3">
-          <label class="fw-bold d-block">Location:</label>
-          <span class="ps-2">{{course_location}}</span>
+        <div class="mb-2">
+          <label class="fw-bold">Location:</label>
+          <span class="ps-1">{{course_location}}</span>
+        </div>
+        {% endif %}
+        {% if course_data.par %}
+        <div class="mb-2">
+          <label class="fw-bold">Par:</label>
+          {{course_data.par}}
+        </div>
+        {% endif %}
+        {% if course_data.points %}
+        <div class="mb-2">
+          <label class="fw-bold">Points:</label>
+          <span class="ps-1">{{course_data.points}}</span>
         </div>
         {% endif %}
         {% if course_data.card %}
-        <div class="mb-3">
+        <div class="mb-2">
           <img src="{{course_data.card.url}}" class="img-fluid" alt="{{course_data.name}} Card">
         </div>
         {% endif %}
         {% if course_data.overview %}
-        <div class="mb-3">
+        <div class="mb-2">
           <img src="{{course_data.overview.url}}" class="img-fluid" alt="{{course_data.name}} Overview">
         </div>
         {% endif %}
@@ -54,7 +62,7 @@
       </div>
     </div>
   </div>
-  <div class="col-6">
+  <div class="col-4">
     <div class="card">
       <div class="card-header fw-bold">
         Holes
@@ -65,7 +73,6 @@
             <tr>
               <th>&nbsp;</th>
               <th>Name</th>
-              <th>Nickname</th>
               <th>Par</th>
               <th>HCP</th>
             </tr>
@@ -75,7 +82,6 @@
             <tr>
               <td><a href="{% url 'dashboard:hole_detail' hole.id %}" class="btn btn-primary btn-sm">View</a></td>
                 <td>{{hole.name}}</td>
-                <td>{{hole.nickname}}</td>
                 <td>{{hole.par}}</td>
                 <td>{{hole.handicap}}</td>
             </tr>

@@ -37,11 +37,14 @@ def ajax_manage_players_for_game(request):
         return HttpResponseBadRequest("Unable to find either game or player")
     if data["action"] == "add-player":
         player_mem = models.PlayerMembership.objects.create(game=game_obj, player=player_obj)
-        if game_obj.use_skins:
+        if data["skins"] != "NotPlayed":
             player_mem.skins = data["skins"]
+        if data["singles"] != "NotPlayed":
+            player_mem.singles = data["singles"]
         player_mem.save()
     elif data["action"] == "remove-player":
         game_obj.players.remove(player_obj)
+        game_obj.save()
     return JsonResponse({"status": "success"})
 
 
@@ -58,7 +61,7 @@ def ajax_manage_game(request):
     if game_obj is None:
         return HttpResponseBadRequest(f"Cannot find game with id: {game_id}")
     if data["action"] == "start-game":
-        game_obj.start(holes_to_play=data.get("which_holes"))
+        game_obj.start(**data)
         messages.add_message(request, messages.INFO, "Game Started.")
         return JsonResponse({"status": "success"})
     elif data["action"] == "reset-game":

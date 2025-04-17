@@ -139,7 +139,6 @@ class EditGroupForm(forms.ModelForm):
         self.helper.layout = Layout(
             Fieldset(
                 "Edit Group",
-                "name",
                 "players",
             ),
             Submit("submit", "Submit", css_class="btn btn-primary btn-sm"),
@@ -147,7 +146,7 @@ class EditGroupForm(forms.ModelForm):
 
     class Meta:
         model = Group
-        exclude = ["game"]
+        exclude = ["game", "name"]
 
 
 class EditTeamForm(forms.ModelForm):
@@ -157,16 +156,14 @@ class EditTeamForm(forms.ModelForm):
         self.helper.layout = Layout(
             Fieldset(
                 "Edit Team",
-                "name",
                 "players",
-                "handicap",
             ),
             Submit("submit", "Submit", css_class="btn btn-primary btn-sm"),
         )
 
     class Meta:
         model = Team
-        exclude = ["game"]
+        exclude = ["game", "handicap", "name"]
 
 
 class PlayerForm(forms.ModelForm):
@@ -228,9 +225,9 @@ class GameForm(forms.ModelForm):
                 "which_holes",
                 "buy_in",
                 "skin_cost",
+                "single_cost",
                 "use_groups",
                 "use_teams",
-                "use_skins",
                 "league_game",
                 "payout_positions",
             ),
@@ -246,9 +243,9 @@ class GameForm(forms.ModelForm):
             "which_holes",
             "buy_in",
             "skin_cost",
+            "single_cost",
             "use_groups",
             "use_teams",
-            "use_skins",
             "league_game",
             "payout_positions",
         ]
@@ -276,9 +273,9 @@ class EditGameForm(forms.ModelForm):
                 "which_holes",
                 "buy_in",
                 "skin_cost",
+                "single_cost",
                 "use_groups",
                 "use_teams",
-                "use_skins",
                 "league_game",
                 "payout_positions",
             ),
@@ -295,9 +292,9 @@ class EditGameForm(forms.ModelForm):
             "which_holes",
             "buy_in",
             "skin_cost",
+            "single_cost",
             "use_groups",
             "use_teams",
-            "use_skins",
             "league_game",
             "payout_positions",
         ]

@@ -1,0 +1,44 @@
+{% block content %}
+<div class="row mt-3">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        Current Scores
+      </div>
+      <div class="card-body">
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th>Player</th>
+              {% for hole_num in hole_list %}
+              <th>{{ hole_num }}</th>
+              {% endfor %}
+              <th>Score</th>
+              <th>Par</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for obj in hole_data %}
+            <tr class="player-row">
+              <td>{{ obj.player_name }}</td>
+              {% for hole_item in obj.hole_list %}
+              {% if obj.user_account == request.user or user_is_admin %}
+              <td><input type="text" size="1" class="hole-input" data-hole-score-id="{{ hole_item.hole_score_id }}" value="{{ hole_item.hole_strokes }}" /></td>
+              {% else %}
+              <td>{{ hole_item.hole_strokes }}</td>
+              {% endif %}
+              {% endfor %}
+              <td>{{ obj.player_score }}</td>
+              <td>{{ obj.par }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="card-footer">
+        <a href="{% url 'dashboard:game_score_detail' game_data.id %}" class="btn btn-sm btn-primary">Score Details</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock content %}

@@ -11,9 +11,9 @@ def get_team_scores(game):
 def get_skins(game):
     return game.score.get("skins", False)
 
-@register.simple_tag
-def get_all_scores(game):
-    return game.score.get("all_scores")
+# @register.simple_tag
+# def get_all_scores(game):
+#     return game.score.get("all_scores")
 
 @register.simple_tag
 def get_hole_list(game):

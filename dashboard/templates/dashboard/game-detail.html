@@ -2,7 +2,13 @@
 {% load djmoney %}
 {% load custom_parser %}
 
-{% block page_name %}Game Detail{% endblock %}
+{% block page_name %}
+  {% if game_data.status != "completed" %}
+  Game {{ game_data.get_status_display }}
+  {% else %}
+  Game Detail
+  {% endif %}
+{% endblock %}
 
 {% block button_bar %}
 <a href="{% url 'dashboard:games' %}" class="btn btn-sm btn-outline-secondary">Back to Game List</a>
@@ -10,81 +16,87 @@
 
 {% block content %}
 <div class="row">
-  {% if team_list %}
-  <div class="col-4">
-  {% else %}
   <div class="col-6">
-  {% endif %}
     <div class="card">
       <div class="card-header fw-bold">
-        Game
+      Game Details
       </div>
       <div class="card-body">
         <div class="mb-3">
-          <label class="fw-bold d-block">Course:</label>
-          <span class="ps-2">{{ game_data.course.name }}</span>
+          <label class="fw-bold">Course:</label>
+          <span class="ps-1">{{ game_data.course.name }}</span>
         </div>
         <div class="mb-3">
-          <label class="fw-bold d-block">Date Played:</label>
-          <span class="ps-2">{{ game_data.date_played }}</span>
+          <label class="fw-bold">Date Played:</label>
+          <span class="ps-1">{{ game_data.date_played }}</span>
         </div>
         <div class="mb-3">
-          <label class="fw-bold d-block">Game Type:</label>
-          <span class="ps-2">{{ game_data.get_game_type_display }}</span>
+          <label class="fw-bold">Game Type:</label>
+          <span class="ps-1">{{ game_data.get_game_type_display }}</span>
         </div>
         {% if game_data.which_holes != "all" %}
         <div class="mb-3">
-          <label class="fw-bold d-block">Holes Played:</label>
-          <span class="ps-2">{{ game_data.which_holes }}</span>
+          <label class="fw-bold">Holes Played:</label>
+          <span class="ps-1">{{ game_data.which_holes }}</span>
         </div>
         {% endif %}
-        {% if game_data.status != "setup" %}
+        {% if game_data.status == "setup" %}
         <div class="mb-3">
-          <label class="fw-bold d-block">Pot:</label>
-          <span class="ps-2">{{ game_data.pot }}</span>
+          <label class="fw-bold">Buy-in:</label>
+          <span class="ps-1">{{ game_data.buy_in }}</span>
         </div>
-          {% if game_data.use_skins %}
+          {% if game_data.skin_cost != 0 %}
           <div class="mb-3">
-            <label class="fw-bold d-block">Skin Pot:</label>
-            <span class="ps-2">{{ game_data.skin_pot }}</span>
+            <label class="fw-bold">Skin Cost:</label>
+            <span class="ps-1">{{ game_data.skin_cost }}</span>
+          </div>
+          {% endif %}
+          {% if game_data.single_cost != 0 %}
+          <div class="mb-3">
+            <label class="fw-bold">Single Cost:</label>
+            <span class="ps-1">{{ game_data.single_cost }}</span>
           </div>
           {% endif %}
         {% else %}
         <div class="mb-3">
-          <label class="fw-bold d-block">Buy-in:</label>
-          <span class="ps-2">{{ game_data.buy_in }}</span>
+          <label class="fw-bold">Random Draw Pot:</label>
+          <span class="ps-1">{{ game_data.pot }}</span>
         </div>
-        <div class="mb-3">
-          <label class="fw-bold d-block">Payout Positions:</label>
-          <span class="ps-2">{{ game_data.payout_positions }}</span>
-        </div>
-          {% if game_data.use_skins %}
+          {% if game_data.skin_cost != 0 %}
           <div class="mb-3">
-            <label class="fw-bold d-block">Skin Cost:</label>
-            <span class="ps-2">{{ game_data.skin_cost }}</span>
+            <label class="fw-bold">Skin Pot:</label>
+            <span class="ps-1">{{ game_data.skin_pot }}</span>
+          </div>
+          {% endif %}
+          {% if game_data.single_cost != 0 %}
+          <div class="mb-3">
+            <label class="fw-bold">Singles Pot:</label>
+            <span class="ps-1">{{ game_data.single_pot }}</span>
           </div>
           {% endif %}
         {% endif %}
         <div class="mb-3">
-          <label class="fw-bold d-block">Groups:</label>
-          <span class="ps-2">{{ game_data.use_groups }}</span>
+          <label class="fw-bold">Payout Positions:</label>
+          <span class="ps-1">{{ game_data.payout_positions }}</span>
         </div>
         <div class="mb-3">
-          <label class="fw-bold d-block">Teams:</label>
-          <span class="ps-2">{{ game_data.use_teams }}</span>
+          <label class="fw-bold">Groups:</label>
+          <span class="ps-1">{{ game_data.use_groups }}</span>
         </div>
         <div class="mb-3">
-          <label class="fw-bold d-block">Skins:</label>
-          <span class="ps-2">{{ game_data.use_skins }}</span>
+          <label class="fw-bold">Teams:</label>
+          <span class="ps-1">{{ game_data.use_teams }}</span>
         </div>
         <div class="mb-3">
-          <label class="fw-bold d-block">League Game:</label>
-          <span class="ps-2">{{game_data.league_game}}</span>
+          <label class="fw-bold">League Game:</label>
+          <span class="ps-1">{{game_data.league_game}}</span>
         </div>
+        {% if current_player_count > 0 %}
         <div class="mb-3">
-          <label class="fw-bold d-block">Status:</label>
-          <span class="ps-2">{{ game_data.get_status_display }}</span>
+          <label class="fw-bold">Player Count:</label>
+          <span class="ps-1">{{current_player_count}}</span>
         </div>
+        {% endif %}
       </div>
       <div class="card-footer">
         {% if game_data.status == "setup" %}
@@ -97,6 +109,7 @@
         {% elif game_data.status == "active" %}
         <button class="btn btn-primary btn-sm"  data-bs-toggle="modal" data-bs-target="#score-game-modal">Score Game</button>
         <button class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#reset-game-modal">Reset Game</button>
+        <a href="{% url 'dashboard:game_current_scores' game_data.id %}" class="btn btn-secondary btn-sm">Current Scores</a>
         {% elif game_data.status == "completed" %}
         <a href="{% url 'dashboard:game_score_detail' game_data.id %}" class="btn btn-primary btn-sm">Score Details</a>
         {% endif %}
@@ -106,14 +119,14 @@
       </div>
     </div>
   </div>
-  {% if team_list or groups %}
-  <div class="col-4">
-  {% else %}
   <div class="col-6">
-  {% endif %}
     <div class="card">
-      <div class="card-header">
+      <div class="card-header fw-bold">
+        {% if current_player_count > 0 %}
+        Players - {{ current_player_count }}
+        {% else %}
         Players
+        {% endif %}
       </div>
       {% if game_data.status == "completed" %}
       {% get_scores game_data as final_scores %}
@@ -145,36 +158,56 @@
       </div>
       {% else %}
       <div class="card-body">
-        {% if game_data.players.all %}
+        {% if current_mems %}
         <table class="table table-striped">
           <thead>
             <tr>
               {% if game_data.status == "setup" %}
               <th style="width: 5%;">&nbsp;</th>
+              {% elif game_data.status == "active" %}
+                {% if game_data.use_groups %}
+                <th>Group</th>
+                {% endif %}
+                {% if game_data.use_teams %}
+                <th>Team</th>
+                {% endif %}
               {% endif %}
               <th>Name</th>
               <th>HCP</th>
               {% if game_data.game_type == "stableford" %}
-              <th>Points Needed</th>
+              <th>Points</th>
               {% endif %}
-              {% if game_data.use_skins %}
+              {% if game_data.skin_cost != 0 %}
               <th>Skins</th>
+              {% endif %}
+              {% if game_data.single_cost != 0 %}
+              <th>Singles</th>
               {% endif %}
             </tr>
           </thead>
           <tbody class="align-middle">
-            {% for player, player_mem in current_players %}
+            {% for player_mem in current_mems %}
             <tr>
               {% if game_data.status == "setup" %}
               <td><button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#remove-player-modal" data-player-id="{{ player.id }}">Remove</button></td>
+              {% elif game_data.status == "active" %}
+                {% if game_data.use_groups %}
+                <td>{{ player_mem.group.name }}</td>
+                {% endif %}
+                {% if game_data.use_teams %}
+                <td>{{ player_mem.team.name }}</td>
+                {% endif %}
               {% endif %}
-              <td>{{ player.name }}</td>
-              <td>{{ player.hcp }}</td>
+              <td>{{ player_mem.player.name }}</td>
+              <td>{{ player_mem.league_hcp }}</td>
               {% if game_data.game_type == "stableford" %}
               <td>{{ player_mem.points_needed }}</td>
               {% endif %}
-              {% if game_data.use_skins %}
+              {% if game_data.skin_cost != 0 %}
               <td>{{ player_mem.skins }}</td>
+              {% endif %}
+              {% if game_data.single_cost != 0 %}
+              <td>{{ player_mem.singles }}</td>
               {% endif %}
             </tr>
             {% endfor %}
@@ -192,112 +225,12 @@
       {% endif %}
     </div>
   </div>
-  {% if team_list %}
-  <div class="col-4">
-    <div class="card">
-      <div class="card-header">
-        Teams
-      </div>
-      <div class="card-body">
-        <table class="table table-striped">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Players</th>
-              <th>Team HCP</th>
-            </tr>
-          </thead>
-          <tbody class="align-middle">
-            {% for team in team_list %}
-            <tr>
-              <td>{{ team.name }}</td>
-              {% format_list team.players as team_players %}
-              <td>{{ team_players }}</td>
-              <td>{{ team.handicap }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-  {% endif %}
-  {% if groups %}
-  <div class="col-4">
-    <div class="card">
-      {% for group in groups %}
-      <div class="card-header">
-        {{ group.name }}
-      </div>
-      <div class="card-body">
-        <table class="table table-striped">
-          <thead>
-            <tr>
-              <th>Player</th>
-              <th>HCP</th>
-            </tr>
-          </thead>
-          <tbody class="align-middle">
-            {% for player in group.players.all %}
-            <tr>
-              <td>{{ player.player.name }}</td>
-              <td>{{ player.player.handicap }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% endfor %}
-    </div>
-  </div>
-  {% endif %}
 </div>
 
-{% if game_data.status == "completed" %}
-  {% include "dashboard/game-scores.html" %}
-{% elif game_data.status == "active" %}
-<div class="row mt-3">
-  <div class="col-12">
-    <div class="card">
-      <div class="card-header">
-        Current Scores
-      </div>
-      <div class="card-body">
-        <table class="table table-striped">
-          <thead>
-            <tr>
-              <th>Player</th>
-              {% for hole_num in hole_list %}
-              <th>{{ hole_num }}</th>
-              {% endfor %}
-              <th>Score</th>
-              <th>Par</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for obj in hole_data %}
-            <tr class="player-row">
-              <td>{{ obj.player_name }}</td>
-              {% for hole_item in obj.hole_list %}
-                {% if obj.user_account == request.user or user_is_admin %}
-                <td><input type="text" size="1" class="hole-input" data-hole-score-id="{{ hole_item.hole_score_id }}" value="{{ hole_item.hole_strokes }}" /></td>
-                {% else %}
-                <td>{{ hole_item.hole_strokes }}</td>
-                {% endif %}
-              {% endfor %}
-              <td>{{ obj.player_score }}</td>
-              <td>{{ obj.par }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      <div class="card-footer">
-        <a href="{% url 'dashboard:game_score_detail' game_data.id %}" class="btn btn-sm btn-primary">Score Details</a>
-      </div>
-    </div>
-  </div>
-</div>
+{% if hole_list and hole_data %}
+  {% include "dashboard/active-scores.html" %}
+{% elif game_data.status == "completed" %}
+  {% include "dashboard/completed-scores.html" %}
 {% endif %}
 
 <div class="modal fade" id="add-player-modal" tabindex="-1" aria-labelledby="add-player-modal-label" aria-hidden="true">
@@ -312,22 +245,29 @@
           <label class="form-label">Player:</label>
           <select id="add-player-select" class="form-select">
             <option value="none">Select a player...</option>
-            {% for player in player_list %}
+            {% for player in players_not_in_game %}
             <option value="{{ player.id }}">{{ player.name }}</option>
             {% endfor %}
           </select>
         </div>
+        {% if game_data.skin_cost != 0 %}
         <div>
           <label class="form-label">Skins:</label>
           <select id="player-skins" class="form-select">
-            {% if game_data.use_skins %}
             <option value="False">False</option>
             <option value="True">True</option>
-            {% else %}
-            <option value="False">False</option>
-            {% endif %}
           </select>
         </div>
+        {% endif %}
+        {% if game_data.single_cost != 0 %}
+        <div>
+          <label class="form-label">Singles:</label>
+          <select id="player-singles" class="form-select">
+            <option value="False">False</option>
+            <option value="True">True</option>
+          </select>
+        </div>
+        {% endif %}
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -451,13 +391,17 @@
 
   document.getElementById("add-player-button").addEventListener("click", async (event) => {
     const playerId = document.getElementById("add-player-select").value;
-    const playerSkins = document.getElementById("player-skins").value;
+    const skins_element = document.getElementById("player-skins");
+    const playerSkins = skins_element?.value ?? "NotPlayed";
+    const single_element = document.getElementById("player-singles");
+    const playerSingles = single_element?.value ?? "NotPlayed";
     if (playerId == "none") {
       return;
     }
     const data = {
       player_id: playerId,
       skins: playerSkins,
+      singles: playerSingles,
       game: gameId,
       action: "add-player"
     }

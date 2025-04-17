@@ -150,6 +150,16 @@ class GolfCourse(models.Model):
         blank=True,
         null=True
     )
+    par = models.PositiveSmallIntegerField(
+        default=None,
+        blank=True,
+        null=True
+    )
+    points = models.PositiveSmallIntegerField(
+        default=None,
+        blank=True,
+        null=True
+    )
 
     class Meta:
         unique_together = ["name", "city", "state"]
@@ -161,13 +171,15 @@ class GolfCourse(models.Model):
     def __repr__(self):
         return f"Course[{self.initials}]"
 
-    @property
-    def par(self):
-        return utils.get_par_for_course(self)
+    def __update_par_points(self):
+        holes = Hole.objects.filter(course=self)
+        if holes.count() == self.hole_count:
+            self.par = sum([h.par for h in holes])
+            self.points = utils.round_up(self.par/2)
 
-    @property
-    def points(self):
-        return utils.round_up(self.par/2)
+    def save(self, *args, **kwargs):
+        self.__update_par_points()
+        super().save(*args, **kwargs)
 
 
 class Hole(models.Model):
@@ -227,6 +239,11 @@ class Tee(models.Model):
 
 
 class Game(models.Model):
+    """
+    singles = per group
+    blind draw = per game overall
+    skins = per game overall
+    """
     course = models.ForeignKey(
         GolfCourse,
         on_delete=models.PROTECT,
@@ -259,32 +276,43 @@ class Game(models.Model):
     )
     buy_in = MoneyField(
         name="buy_in",
-        verbose_name="Per-player buy-in",
+        verbose_name="Per-player random draw buy-in",
         max_digits=3,
         decimal_places=0,
         default=10,
         default_currency="USD",
         validators=[
-            MinMoneyValidator({"USD": 10}),
+            MinMoneyValidator({"USD": 0}),
             MaxMoneyValidator({"USD": 100}),
         ],
     )
     skin_cost = MoneyField(
         name="skin_cost",
-        verbose_name="Per-hole skin cost",
-        max_digits=2,
+        verbose_name="Per-hole skin buy-in",
+        max_digits=3,
         decimal_places=0,
         default=1,
         default_currency="USD",
         validators=[
             MinMoneyValidator({"USD": 0}),
-            MaxMoneyValidator({"USD": 10}),
+            MaxMoneyValidator({"USD": 100}),
+        ],
+    )
+    single_cost = MoneyField(
+        name="single_cost",
+        verbose_name="Per-Player singles buy-in",
+        max_digits=3,
+        decimal_places=0,
+        default=5,
+        default_currency="USD",
+        validators=[
+            MinMoneyValidator({"USD": 0}),
+            MaxMoneyValidator({"USD": 100}),
         ],
     )
     score = models.JSONField(blank=True, null=True)
     use_groups = models.BooleanField(default=True)
     use_teams = models.BooleanField(default=False)
-    use_skins = models.BooleanField(default=True)
     league_game = models.BooleanField(default=True)
     payout_positions = models.PositiveSmallIntegerField(
         choices=PayoutChoices.choices,
@@ -293,7 +321,14 @@ class Game(models.Model):
 
     @property
     def par(self):
-        return utils.get_par_for_game(self)
+        if self.holes_to_play == HolesToPlayChoices.HOLES_9:
+            return utils.get_par_for_game(self)
+        else:
+            return self.course.par
+
+    @property
+    def player_mems(self):
+        return utils.get_game_player_mems(self)
 
     @property
     def pot(self):
@@ -304,42 +339,67 @@ class Game(models.Model):
         return self.course.points
 
     @property
+    def skin_count(self):
+        return utils.num_players_in_skins(self)
+
+    @property
+    def single_count(self):
+        return utils.num_players_in_singles(self)
+
+    @property
     def skin_pot(self):
-        num_players = utils.num_players_in_skins(self)
-        return self.skin_cost * num_players * self.holes_to_play
+        return self.skin_cost * self.holes_to_play * self.skin_count
+
+    @property
+    def single_pot(self):
+        return self.single_cost * self.single_count
 
     def __str__(self):
         if self.status == GameStatusChoices.COMPLETED:
             return f"{self.course}-{self.date_played.date()}"
-        else:
-            return f"{self.course}-{self.status}"
+        return f"{self.course}-{self.status}"
 
     def __repr__(self):
-        if self.status == GameStatusChoices.COMPLETED:
-            return f"Game[{self.course}:{self.date_played.date()}]"
+        return f"Game[{str(self).replace('-', ':')}]"
+
+    def set_holes(self, which_holes="all"):
+        if self.course.hole_count == 18:
+            if which_holes == "front":
+                self.which_holes = WhichHolesChoices.FRONT
+                self.holes_to_play = HolesToPlayChoices.HOLES_9
+            elif which_holes == "back":
+                self.which_holes = WhichHolesChoices.BACK
+                self.holes_to_play = HolesToPlayChoices.HOLES_9
+            else:
+                self.which_holes = WhichHolesChoices.ALL
+                self.holes_to_play = HolesToPlayChoices.HOLES_18
         else:
-            return f"Game[{self.course}:{self.status}]"
+            self.which_holes = WhichHolesChoices.ALL
+            self.holes_to_play = HolesToPlayChoices.HOLES_9
+        self.save()
+
+    def set_type(self, game_type):
+        if game_type == "best-ball":
+            self.game_type = GameTypeChoices.BEST_BALL
+        elif game_type == "stableford":
+            self.game_type = GameTypeChoices.STABLEFORD
+        elif game_type == "stroke":
+            self.game_type = GameTypeChoices.STROKE
+        self.save()
 
     def start(self, **kwargs):
         for key, value in kwargs.items():
             if key == "which_holes":
-                utils.set_holes_for_game(self, value)
-            if key == "game_type":
-                self.game_type = value
-            if key == "buy_in":
-                self.buy_in = value
-            if key == "skin_cost":
-                self.skeyin_cost = value
-            if key == "use_teams":
-                self.use_teams = value
-            if key == "league_game":
-                self.league_game = value
-            if key == "payout_positions":
-                self.payout_positions = value
+                self.set_holes(value)
+            elif "type" in key:
+                self.set_type(value)
+            elif hasattr(self, key):
+                setattr(self, key, value)
+                self.save()
         utils.create_hole_scores_for_game(self)
-        if self.use_teams:
+        if self.use_teams or all([self.use_groups, self.use_teams]):
             utils.create_teams_for_game(self)
-        if self.use_groups:
+        elif self.use_groups:
             utils.create_groups_for_game(self)
         self.status = GameStatusChoices.ACTIVE
         self.save()
@@ -351,24 +411,26 @@ class Game(models.Model):
             self.save()
 
     def reset(self):
-        utils.clean_game(self)
-        self.score = None
-        self.status = GameStatusChoices.SETUP
-        self.save()
+        if self.status != GameStatusChoices.COMPLETED:
+            utils.clean_game(self)
+            self.score = None
+            self.status = GameStatusChoices.SETUP
+            self.save()
 
     def clean(self):
         num_holes = self.course.hole_count - self.holes_to_play
         if num_holes == 9 and self.which_holes == WhichHolesChoices.ALL:
             raise ValidationError("Please choose front or back")
 
-    def delete(self, **kwargs):
-        utils.clean_game(self)
-        super().delete(**kwargs)
+    # def delete(self, *args, **kwargs):
+    #     utils.clean_game(self)
+    #     super().delete(*args, **kwargs)
 
     class Meta:
         ordering = ["date_played", "status"]
         verbose_name_plural = "games"
         get_latest_by = "date_played"
+        unique_together = ["course", "date_played"]
 
 
 class Player(models.Model):
@@ -414,11 +476,36 @@ class Player(models.Model):
     def name(self):
         return f"{self.first_name} {self.last_name}"
 
+    @property
+    def league_hcp(self):
+        return utils.calculate_player_league_hcp(self) or self.handicap
+
+    @property
+    def league_points(self):
+        return utils.get_player_item_league_avg(self, 'game_points')
+
+    @property
+    def league_score(self):
+        return utils.get_player_item_league_avg(self, 'game_score')
+
     def __str__(self):
         return self.name
 
     def __repr__(self):
         return f"Player[{self.name}]"
+
+    def update_handicap(self, hcp=None):
+        if hcp is not None:
+            self.handicap = hcp
+            self.save()
+        elif self.handicap != self.league_hcp:
+            self.handicap = self.league_hcp
+            self.save()
+
+    # def save(self, *args, **kwargs):
+    #     if self.handicap != self.league_hcp:
+    #         self.handicap = self.league_hcp
+    #     super().save(*args, **kwargs)
 
     class Meta:
         unique_together = ["first_name", "last_name"]
@@ -439,14 +526,21 @@ class Team(models.Model):
     )
 
     def __str__(self):
-        return f"{self.game}-{self.name}"
+        return f"{self.name}"
 
     def __repr__(self):
-        return f"Team[{self.game}:{self.name}]"
+        return f"Team[{self.name}]"
+
+    def save(self, *args, **kwargs):
+        if len(self.players.all()) > 0:
+            all_hcps = [p.handicap for p in self.players.all()]
+            self.handicap = utils.get_avg(all_hcps)
+        super().save(*args, **kwargs)
 
     class Meta:
         ordering = ["game", "name"]
         verbose_name_plural = "teams"
+        unique_together = ["name", "game"]
 
 
 class Group(models.Model):
@@ -463,19 +557,26 @@ class Group(models.Model):
     )
 
     def __str__(self):
-        return f"{self.game}-{self.name}"
+        return f"{self.name}"
 
     def __repr__(self):
-        return f"Group[{self.game}:{self.name}]"
+        return f"Group[{self.name}]"
 
     class Meta:
         ordering = ["game", "name"]
         verbose_name_plural = "groups"
+        unique_together = ["name", "game"]
 
 
 class PlayerMembership(models.Model):
-    game = models.ForeignKey(Game, on_delete=models.CASCADE)
     player = models.ForeignKey(Player, on_delete=models.CASCADE)
+    game = models.ForeignKey(
+        Game,
+        on_delete=models.CASCADE,
+        default=None,
+        blank=True,
+        null=True
+    )
     team = models.ForeignKey(
         Team,
         on_delete=models.SET_DEFAULT,
@@ -491,6 +592,7 @@ class PlayerMembership(models.Model):
         null=True
     )
     skins = models.BooleanField(default=False)
+    singles = models.BooleanField(default=False)
     game_handicap = models.SmallIntegerField(
         default=None,
         blank=True,
@@ -508,23 +610,69 @@ class PlayerMembership(models.Model):
     )
 
     @property
+    def is_official(self):
+        if all([self.game_handicap, self.game_points, self.game_score]) and \
+                (self.game is None or (self.game.league_game and \
+                self.game.status == GameStatusChoices.COMPLETED)):
+            return True
+        return False
+
+    @property
+    def name(self):
+        return self.player.name
+
+    @property
+    def hole_scores(self):
+        return HoleScore.objects.filter(player=self).order_by("hole")
+
+    @property
     def points_needed(self):
-        return self.game.points - utils.round_up(self.player.handicap)
+        return self.game.points - utils.round_up(self.player.league_hcp)
+
+    @property
+    def league_hcp(self):
+        return self.player.league_hcp
+
+    @property
+    def league_points(self):
+        return self.player.league_points
+
+    @property
+    def league_score(self):
+        return self.player.league_score
 
     def __str__(self):
-        name = f"{self.game}"
-        if self.group:
+        name = f"{self.name}"
+        if self.game is not None:
+            name = f"{name}-{self.game}"
+        if self.group is not None:
             name = f"{name}-{self.group}"
-        if self.team:
+        if self.team is not None:
             name = f"{name}-{self.team}"
-        return f"{name}-{self.player}"
+        return name
 
     def __repr__(self):
         return f"PlayerMembership[{str(self).replace('-', ':')}]"
 
+    def score_game(self, game_score, game_points, game_hcp):
+        if all([game_score, game_points, game_hcp]):
+            self.game_score = game_score
+            self.game_points = game_points
+            self.game_handicap = game_hcp
+            self.save()
+
+    def delete(self, *args, **kwargs):
+        if self.is_official:
+            utils.revert_player_hcp(self.player, self.game_handicap)
+        super().delete(*args, **kwargs)
+
+    def save(self, *args, **kwargs):
+        if self.is_official:
+            utils.update_player_hcp(self.player, self.game_handicap)
+        super().save(*args, **kwargs)
+
     class Meta:
-        unique_together = ["game", "player"]
-        order_with_respect_to = "game"
+        order_with_respect_to = "player"
 
 
 class HoleScore(models.Model):
@@ -542,53 +690,26 @@ class HoleScore(models.Model):
         return True
 
     @property
-    def points(self):
-        if self.is_scored:
-            return utils.points_map.get(self.strokes - self.hole.par)
-        return 0
+    def max_strokes(self):
+        return self.hole.par + max(utils.points_map.keys())
 
     @property
     def score(self):
         if self.is_scored:
             return self.strokes - self.hole.par
-        return 0
+        else:
+            return 0
+
+    @property
+    def points(self):
+        if self.is_scored:
+            return utils.points_map.get(self.score, 0)
+        else:
+            return 0
 
     @property
     def score_name(self):
-        if not self.is_scored:
-            return _("Hole not scored")
-        if self.strokes == 1:
-            return _("Hole in One")
-        elif self.strokes == 2:
-            if self.hole.par == 3:
-                return _("Birdie")
-            elif self.hole.par == 4:
-                return _("Eagle")
-            elif self.hole.par == 5:
-                return _("Albatross")
-        elif self.strokes == 3:
-            if self.hole.par == 3:
-                return _("Par")
-            elif self.hole.par == 4:
-                return _("Birdie")
-            elif self.hole.par == 5:
-                return _("Eagle")
-        elif self.strokes == 4:
-            if self.hole.par == 3:
-                return _("Bogey")
-            elif self.hole.par == 4:
-                return _("Par")
-            elif self.hole.par == 5:
-                return _("Birdie")
-        elif self.strokes == 5:
-            if self.hole.par == 4:
-                return _("Bogey")
-            elif self.hole.par == 5:
-                return _("Par")
-        elif self.strokes == 6:
-            if self.hole.par == 5:
-                return _("Bogey")
-        return _("Double Bogey Max")
+        return utils.get_score_word(self.strokes, self.hole.par)
 
     def __str__(self):
         return f"{self.player}-{self.hole}"
@@ -597,8 +718,11 @@ class HoleScore(models.Model):
         return f"HoleScore[{self.player}:{self.hole}]"
 
     def score_hole(self, strokes: int=None):
-        if strokes is not None:
-            self.strokes = strokes
+        if isinstance(strokes, int) and self.strokes != strokes:
+            if strokes > self.max_strokes:
+                self.strokes = self.max_strokes
+            else:
+                self.strokes = strokes
             self.save()
 
     def reset_score(self):
@@ -609,6 +733,7 @@ class HoleScore(models.Model):
     class Meta:
         ordering = ["player", "hole", "-strokes"]
         verbose_name_plural = "scores"
+        unique_together = ["player", "hole"]
 
 
 class TeeTime(models.Model):

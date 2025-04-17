@@ -123,7 +123,7 @@
               <th>Strokes</th>
               <th>Score</th>
               <th>Points</th>
-              {% if game_data.use_skins %}
+              {% if game_data.skin_cost != 0 %}
               <th>Skins</th>
               {% endif %}
             </tr>
@@ -135,7 +135,7 @@
               <td>{{ score.strokes }}</td>
               <td>{{ score.score }}</td>
               <td>{{ score.points }}</td>
-              {% if game_data.use_skins %}
+              {% if game_data.skin_cost != 0 %}
               <td>{{ score.skins }}</td>
               {% endif %}
             </tr>
