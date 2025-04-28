@@ -6,6 +6,13 @@ from djmoney.money import Money
 # Assuming a model named 'Item' with fields 'field1' and 'field2'
 #items = Item.objects.filter(Q(field1='value1') | Q(field2='value2'))
 
+# # How to get a random item from the database
+# # first query:
+# count = MyModel.objects.all().count()
+#
+# # second query:
+# random_offset = random.randint(0,count-1)
+# MyModel.objects.all()[random_offset].get()
 
 
 points_map = {
@@ -115,7 +122,7 @@ def get_players_not_in_game(game):
 
 
 def get_game_player_mems(game):
-    return models.PlayerMembership.objects.filter(game=game)
+    return models.PlayerMembership.objects.filter(game=game).order_by("group_id")
 
 
 def get_current_players_for_game(game):
@@ -181,12 +188,16 @@ def get_group_list_for_game(game):
 
 
 def get_holes_for_game(game):
-    holes = models.Hole.objects.filter(course=game.course).order_by("order")
+    holes = game.course.holes
     if game.which_holes == "front":
         holes = holes.filter(order__gte=1, order__lt=10)
     elif game.which_holes == "back":
         holes = holes.filter(order__gte=10)
     return holes
+
+
+def get_hole_scores_for_game(game):
+    return models.HoleScore.objects.filter(player__in=[game.player_mems]).order_by("player")
 
 
 def get_hole_scores_for_player_mem(player_mem):
@@ -338,18 +349,17 @@ def create_groups_for_game(game):
     if not par_group:
         par_group = models.Group(name=models.GroupNameChoices.PAR, game=game)
         par_group.save()
-    players = game.players.all().order_by("handicap")
+    players = game.players.all().order_by("-league_hcp")
     players_per_group = round(players.count()/3)
     for player in players:
         count += 1
         player_mem = models.PlayerMembership.objects.filter(game=game, player=player).first()
         if count <= players_per_group:
-            player_mem.group = eagle_group
+            eagle_group.players.add(player_mem)
         elif count <= (players_per_group*2):
-            player_mem.group = birdie_group
+            birdie_group.players.add(player_mem)
         else:
-            player_mem.group = par_group
-        player_mem.save()
+            par_group.players.add(player_mem)
     eagle_group.save()
     birdie_group.save()
     par_group.save()
@@ -446,7 +456,7 @@ def get_hole_list_for_game(game):
         return list(str(i) for i in range(1, game.holes_to_play + 1))
 
 
-def get_hole_data_for_game(game, final_scores=False):
+def collect_hole_data(game, final_scores=False):
     hole_data = []
     # Always keep track of each players score
     for player in game.players.all():
@@ -458,9 +468,9 @@ def get_hole_data_for_game(game, final_scores=False):
             "player_id": player.id,
             "player_name": player.name,
             "hcp": float(player.handicap),
-            "skins": player_mem.skins,
-            "singles": player_mem.singles,
             "points_needed": player_mem.points_needed,
+            "singles": player_mem.singles,
+            "skins": player_mem.skins,
             "group_id": None,
             "group_name": None,
             "team_id": None,
@@ -472,8 +482,8 @@ def get_hole_data_for_game(game, final_scores=False):
             "player_score": 0,
             "player_points": 0,
             "par": 0,
-            "winner": False,
             "money": 0,
+            "singles_money": 0,
         }
         if game.use_groups and player_mem.group != None:
             player_data["group_id"] = player_mem.group.id
@@ -494,7 +504,7 @@ def get_hole_data_for_game(game, final_scores=False):
                     "hole_strokes": hole_score.strokes,
                     "hole_points": hole_score.points,
                     "hole_par": hole_score.hole.par,
-                    "hole_handicap": str(hole_score.hole.handicap),
+                    "hole_handicap": hole_score.hole.handicap,
                     "hole_score": hole_score.score,
                 }
             )
@@ -513,37 +523,39 @@ def get_hole_data_for_game(game, final_scores=False):
     return hole_data
 
 
-# def get_all_scores_for_game(game):
-#     all_scores = []
-#     for hole in get_holes_for_game(game):
-#         hole_data = {
-#             "order": hole.order,
-#             "name": hole.name,
-#             "scores": [],
-#             "par": hole.par,
-#             "handicap": int(hole.handicap),
-#         }
-#         for player in game.players.all():
-#             player_mem = models.PlayerMembership.objects.filter(
-#                 game=game, player=player
-#             ).first()
-#             hole_score = models.HoleScore.objects.filter(
-#                 player=player_mem, hole=hole
-#             ).first()
-#             hole_score = {
-#                 "player": player.name,
-#                 "group": player_mem.group,
-#                 "team": player_mem.team,
-#                 "strokes": hole_score.strokes,
-#                 "points": hole_score.points,
-#                 "score": hole_score.score,
-#                 "skins": player_mem.skins,
-#             }
-#             hole_data["scores"].append(hole_score)
-#         hole_data["scores"].sort(key=lambda s: s["strokes"])
-#         all_scores.append(hole_data)
-#     all_scores.sort(key=lambda h: h["order"])
-#     return all_scores
+def score_skins_for_game(game):
+    skins = []
+    carry_money = 0
+    skin_players = models.PlayerMembership.objects.filter(
+        Q(game=game) & Q(skins=True)
+    )
+    for hole in get_holes_for_game(game):
+        hole_data = {
+            "order": hole.order,
+            "name": hole.name,
+            "player": None,
+            "money": None,
+        }
+        player_scores = models.HoleScore.objects.filter(
+            player__in=skin_players, hole=hole
+        )
+        hole_money = game.skin_cost * len(skin_players)
+        low_score = min([p.strokes for p in player_scores])
+        low_filter = filter(lambda h: h.strokes == low_score, player_scores)
+        low_scores = list(low_filter)
+        if low_scores and len(low_scores) == 1:
+            winner = low_scores[0].player
+            money = hole_money + carry_money
+            winner.skin_money += money
+            winner.save()
+            hole_data.update({"player": winner.name, "money": str(money)})
+            carry_money = 0
+        else:
+            carry_money += hole_money
+            hole_data.update({"player": "carry", "money": "carry"})
+        skins.append(hole_data)
+    skins.sort(key=lambda h: h["order"])
+    return skins
 
 
 def all_holes_from_hole_data(hole_data):
@@ -569,8 +581,8 @@ def filter_skins_from_hole_data(hole_data):
     for player in hole_data:
         if player["skins"]:
             for hole in player["hole_list"]:
-                hole.update({"player_name": player["player_name"]})
-                skin_holes.append(hole)
+                skin_hole = hole.update({"player_name": player["player_name"]})
+                skin_holes.append(skin_hole)
     return skin_holes
 
 
@@ -592,7 +604,7 @@ def get_skins_hole_data(hole_data, skin_cost):
                 carry_money = None
         else:
             player = "carry"
-            money = "---"
+            money = "carry"
             if carry_money == None:
                 carry_money = hole_money
             else:
@@ -632,7 +644,7 @@ def skin_holes_from_game(game):
 
 def get_skins(game):
     skins = []
-    carry_money = None
+    carry_money = 0
     skin_holes = skin_holes_from_game(game)
     for hole in skin_holes:
         if len(hole["scores"]):
@@ -642,18 +654,12 @@ def get_skins(game):
             low_scores = list(low_filter)
             if low_scores and len(low_scores) == 1:
                 player = low_scores[0]["player"]
-                if carry_money == None:
-                    money = hole_money
-                else:
-                    money = hole_money + carry_money
-                    carry_money = None
+                money = hole_money + carry_money
+                carry_money = 0
             else:
                 player = "carry"
-                money = Money(0, "USD")
-                if carry_money == None:
-                    carry_money = hole_money
-                else:
-                    carry_money = hole_money + carry_money
+                money = 0
+                carry_money += hole_money
             skins.append({"hole": hole["name"], "player": player, "money": str(money)})
     return skins
 
@@ -661,112 +667,233 @@ def get_skins(game):
 def tiebreaker_from_hole_hcp(winners):
     hole_hcp = 1
     while hole_hcp <= 18:
-        current_holes = []
-        for w in winners:
-            for h in w["hole_list"]:
-                if h["hole_handicap"] == hole_hcp:
-                    current_holes.append((w, h["hole_strokes"]))
+        # current_holes = []
+        # for w in winners:
+        #     for h in w["hole_list"]:
+        #         if h["hole_handicap"] == hole_hcp:
+        #             current_holes.append((w, h["hole_strokes"]))
+        hole_lc = [
+            (w, h["hole_strokes"]) for w in winners \
+            for h in w["hole_list"] if h["hole_handicap"] == hole_hcp
+        ]
+        current_holes = list(hole_lc)
         low_strokes = min([s for _, s in current_holes])
         low_filter = filter(lambda s: s[1] == low_strokes, current_holes)
         low_scores = list(low_filter)
         if len(low_scores) == 1:
-            low_score = low_scores[0]
-            return low_score[0]
+            winner, low_score = low_scores[0]
+            return winner
         hole_hcp += 1
-
-
-def get_tiebreaker(winners):
-    winner = False
-    while not winner:
-        winner = tiebreaker_from_hole_hcp(winners)
-    return winner
 
 
 def get_winner(winners):
     if len(winners) == 1:
         return winners[0]
     elif len(winners) > 1:
-        return get_tiebreaker(winners)
-    return None
+        return tiebreaker_from_hole_hcp(winners)
 
 
-def update_hole_data_high_points(hole_data, points_list, pot, percent_money=100):
+def create_random_teams(game):
+    teams = []
+    players = list(game.players.all())
+    if len(players) % 2 == 0:
+        remainder = False
+        num_teams = int(len(players)/2)
+    else:
+        remainder = True
+        num_teams = int((len(players)-1)/2)
+    for _num in range(1, num_teams + 1):
+        new_team = models.RandomTeam(name=f"Team{_num}", game=game)
+        new_team.save()
+        _player_one = random.choice(players)
+        new_team.players.add(_player_one)
+        players = players.exclude(id=_player_one.id)
+        _player_two = random.choice(players)
+        new_team.players.add(_player_two)
+        players = players.exclude(id=_player_two.id)
+        new_team.save()
+        teams.append(new_team)
+    if remainder and players.count() == 1:
+        rem_player = players[0]
+        _lucky_team = random.choice(teams)
+        _lucky_team.players.add(rem_player)
+        _lucky_team.save()
+
+
+def team_tiebreaker(winners):
+    hole_hcp = 1
+    while hole_hcp <= 18:
+        current_holes = []
+        for w in winners:
+            current_hole = {
+                "team": w,
+                "strokes": 0,
+            }
+            for p in w.players.all():
+                player_strokes = p.hole_scores.filter(hole__handicap=hole_hcp).first().strokes
+                if current_hole["strokes"] == 0:
+                    current_hole["strokes"] = player_strokes
+                elif current_hole["strokes"] > player_strokes:
+                    current_hole["strokes"] = player_strokes
+            current_holes.append(current_hole)
+        low_strokes = min([h["strokes"] for h in current_holes])
+        low_filter = filter(lambda s: s["strokes"] == low_strokes, current_holes)
+        low_scores = list(low_filter)
+        if len(low_scores) == 1:
+            return low_scores[0]["team"]
+        hole_hcp += 1
+
+
+def score_random_teams(teams, pot, percent_money=100):
+    money = pot * (percent_money/100)
+    high_score = max([t.points for t in teams])
+    high_filter = filter(lambda t: t.points == high_score, teams)
+    winners = list(high_filter)
+    if len(winners) == 1:
+        team_winner = winners[0]
+    else:
+        team_winner = team_tiebreaker(winners)
+    if team_winner:
+        for player in team_winner.players.all():
+            player.random_money = money/team_winner.players.count()
+            player.save()
+        teams = teams.exclude(id=team_winner.id)
+    return teams
+
+
+def score_teams_random(game):
+    teams = models.RandomTeam.objects.filter(game=game).order_by("points")
+    if game.payout_positions == 1:
+        teams = score_random_teams(teams, game.pot)
+    elif game.payout_positions == 2:
+        teams = score_random_teams(teams, game.pot, 80)
+        teams = score_random_teams(teams, game.pot, 20)
+    elif game.payout_positions == 3:
+        teams = score_random_teams(teams, game.pot, 70)
+        teams = score_random_teams(teams, game.pot, 20)
+        teams = score_random_teams(teams, game.pot, 10)
+    elif game.payout_positions == 4:
+        teams = score_random_teams(teams, game.pot, 40)
+        teams = score_random_teams(teams, game.pot, 30)
+        teams = score_random_teams(teams, game.pot, 20)
+        teams = score_random_teams(teams, game.pot, 10)
+
+
+def update_player_random_money(player, money):
+    player_mem = models.PlayerMembership.objects.filter(player_id=player["player_id"]).first()
+    player_mem.random_money = money
+    player_mem.save()
+
+
+def score_hole_data_random(hole_data, pot, percent_money=100):
+    money = (pot * (percent_money/100))/2
+    player_one = random.choice(hole_data)
+    ia = hole_data.index(player_one)
+    playera = hole_data.pop(ia)
+    update_player_random_money(playera, money)
+    playera.update({"money": str(money)})
+    hole_data.insert(ia, playera)
+    player_two = random.choice(hole_data)
+    ib = hole_data.index(player_two)
+    playerb = hole_data.pop(ib)
+    update_player_random_money(playerb, money)
+    playerb.update({"money": str(money)})
+    hole_data.insert(ib, playerb)
+
+
+def update_player_single_money(player, money):
+    player_mem = models.PlayerMembership.objects.filter(player_id=player["player_id"]).first()
+    player_mem.single_money = money
+    player_mem.save()
+
+
+def update_hole_data_points(hole_data, points_list, pot, percent_money=100):
     high_score = max(points_list)
     high_filter = filter(lambda t: t["game_points"] == high_score, hole_data)
     winners = list(high_filter)
-    pot_pct = percent_money/100
-    money = (pot * pot_pct)/len(winners)
-    for w in winners:
-        i = hole_data.index(w)
-        player = hole_data.pop(i)
-        player.update({"winner": True})
-        player.update({"money": str(money)})
-        hole_data.insert(i, player)
-        points_list.remove(w["game_points"])
+    money = pot * (percent_money/100)
+    winner = get_winner(winners)
+    i = hole_data.index(winner)
+    player = hole_data.pop(i)
+    update_player_single_money(player, money)
+    player.update({"singles_money": str(money)})
+    hole_data.insert(i, player)
+    points_list.remove(winner["game_points"])
     return hole_data, points_list
 
 
-def update_hole_data_low_score(hole_data, score_list, pot, percent_money=100):
+def update_hole_data_score(hole_data, score_list, pot, percent_money=100):
     low_score = min(score_list)
     low_filter = filter(lambda t: t["player_score"] == low_score, hole_data)
     winners = list(low_filter)
-    pot_pct = percent_money/100
-    money = (pot * pot_pct)/len(winners)
-    for w in winners:
-        i = hole_data.index(w)
-        player = hole_data.pop(i)
-        player.update({"winner": True})
-        player.update({"money": str(money)})
-        hole_data.insert(i, player)
-        score_list.remove(w["player_score"])
+    money = pot * (percent_money/100)
+    winner = get_winner(winners)
+    i = hole_data.index(winner)
+    player = hole_data.pop(i)
+    update_player_single_money(player, money)
+    player.update({"singles_money": str(money)})
+    hole_data.insert(i, player)
+    score_list.remove(winner["player_score"])
     return hole_data, score_list
+
+
+def score_hole_data_singles(hole_data, game):
+    if game.game_type == "stableford":
+        points_list = [h["game_points"] for h in hole_data if h["singles"]]
+        if game.payout_positions == 1:
+            hole_data, _ = update_hole_data_points(hole_data, points_list, game.single_pot)
+        elif game.payout_positions == 2:
+            hole_data, pl = update_hole_data_points(hole_data, points_list, game.single_pot, 80)
+            hole_data, _ = update_hole_data_points(hole_data, pl, game.pot, 20)
+        elif game.payout_positions == 3:
+            hole_data, pl = update_hole_data_points(hole_data, points_list, game.single_pot, 70)
+            hole_data, pl = update_hole_data_points(hole_data, pl, game.single_pot, 20)
+            hole_data, _ = update_hole_data_points(hole_data, pl, game.single_pot, 10)
+    else:
+        score_list = [h["player_score"] for h in hole_data if h["singles"]]
+        if payout_positions == 1:
+            hole_data, _ = update_hole_data_score(hole_data, score_list, game.single_pot)
+        elif payout_positions == 2:
+            hole_data, sl = update_hole_data_score(hole_data, score_list, game.single_pot, 80)
+            hole_data, _ = update_hole_data_score(hole_data, sl, game.single_pot, 20)
+        elif payout_positions == 3:
+            hole_data, sl = update_hole_data_score(hole_data, score_list, game.single_pot, 70)
+            hole_data, sl = update_hole_data_score(hole_data, sl, game.single_pot, 20)
+            hole_data, _ = update_hole_data_score(hole_data, sl, game.single_pot, 10)
+    return hole_data
 
 
 def score_hole_data(hole_data, game):
     if game.game_type == "stableford":
         points_list = [h["game_points"] for h in hole_data]
         if game.payout_positions == 1:
-            hole_data, _ = update_hole_data_high_points(hole_data, points_list, game.pot)
+            hole_data, _ = score_hole_data_points(hole_data, points_list, game.pot)
         elif game.payout_positions == 2:
-            hole_data, pl = update_hole_data_high_points(hole_data, points_list, game.pot, 80)
-            hole_data, _ = update_hole_data_high_points(hole_data, pl, game.pot, 20)
+            hole_data, pl = score_hole_data_points(hole_data, points_list, game.pot, 80)
+            hole_data, _ = score_hole_data_points(hole_data, pl, game.pot, 20)
         elif game.payout_positions == 3:
-            hole_data, pl = update_hole_data_high_points(hole_data, points_list, game.pot, 70)
-            hole_data, pl = update_hole_data_high_points(hole_data, pl, game.pot, 20)
-            hole_data, _ = update_hole_data_high_points(hole_data, pl, game.pot, 10)
+            hole_data, pl = score_hole_data_points(hole_data, points_list, game.pot, 70)
+            hole_data, pl = score_hole_data_points(hole_data, pl, game.pot, 20)
+            hole_data, _ = score_hole_data_points(hole_data, pl, game.pot, 10)
     else:
         score_list = [h["player_score"] for h in hole_data]
         if payout_positions == 1:
-            hole_data, _ = update_hole_data_low_score(hole_data, score_list, game.pot)
+            hole_data, _ = score_hole_data_score(hole_data, score_list, game.pot)
         elif payout_positions == 2:
-            hole_data, sl = update_hole_data_low_score(hole_data, score_list, game.pot, 80)
-            hole_data, _ = update_hole_data_low_score(hole_data, sl, game.pot, 20)
+            hole_data, sl = score_hole_data_score(hole_data, score_list, game.pot, 80)
+            hole_data, _ = score_hole_data_score(hole_data, sl, game.pot, 20)
         elif payout_positions == 3:
-            hole_data, sl = update_hole_data_low_score(hole_data, score_list, game.pot, 70)
-            hole_data, sl = update_hole_data_low_score(hole_data, sl, game.pot, 20)
-            hole_data, _ = update_hole_data_low_score(hole_data, sl, game.pot, 10)
+            hole_data, sl = score_hole_data_score(hole_data, score_list, game.pot, 70)
+            hole_data, sl = score_hole_data_score(hole_data, sl, game.pot, 20)
+            hole_data, _ = score_hole_data_score(hole_data, sl, game.pot, 10)
     return hole_data
 
 
-def score_singles(hole_data, game):
-    if game.use_groups:
-        groups = models.Group.objects.filter(game=game)
-        for group in groups:
-            group_data = [p for p in hole_data if p["group_name"] == group.name]
-
-
-def get_player_league_mems(player):
-    return models.PlayerMembership.objects.filter(player=player).filter(
-        Q(game__isnull=True) | Q(game__league_game=True)
-    )
-
-
 def get_player_league_items(player, item):
-    league_mems = get_player_league_mems(player=player)
-    current_items = [
-        getattr(m, item) for m in league_mems if getattr(m, item) is not None
-    ]
-    return list(current_items)
+    league_mems = models.PlayerMembership.objects.filter(
+        player=player, game__league_game=True
+    )
+    return list(league_mems.values_list(item, flat=True))
 
 
 def get_player_item_league_avg(player, item, required_length: int=None):
@@ -776,20 +903,24 @@ def get_player_item_league_avg(player, item, required_length: int=None):
     return get_avg(item_list, 1)
 
 
-def calculate_player_league_hcp(player):
-    league_hcps = models.PlayerMembership.objects.filter(
-        Q(player=player) & \
-        (Q(game__isnull=True) | Q(game__league_game=True)) & \
-        Q(game_handicap__isnull=False)
-    )
-    if league_hcps.count() >= 3:
+def calculate_player_league_hcp(player, hcp=None):
+    if hcp is not None:
+        league_hcps = get_player_item_league_avg(player, "game_handicap", required_length=2)
+    else:
+        league_hcps = get_player_item_league_avg(player, "game_handicap", required_length=3)
+    if league_hcps:
+        if hcp is not None:
+            league_hcps.append(hcp)
         return get_avg(league_hcps, 1)
 
 
-def update_player_hcp(player, hcp):
-    new_hcp = calculate_player_league_hcp(player)
+def update_player_hcp(player, hcp=None):
+    new_hcp = calculate_player_league_hcp(player, hcp)
     if new_hcp and new_hcp != player.handicap:
         player.handicap = new_hcp
+        player.save()
+    elif hcp:
+        player.handicap = hcp
         player.save()
 
 
@@ -799,41 +930,41 @@ def update_player_hcp_hole_data(hole_data):
         update_player_hcp(player, pd["game_hcp"])
 
 
-def revert_player_hcp(player, hcp):
-    # all_mems = models.PlayerMembership.objects.filter(player=player).filter(
-    #     Q(game__isnull=True) | Q(game__league_game=True)
-    # )
-    all_mems = models.PlayerMembership.objects.filter(player=player)
-    current_hcps = [
-        m.game_handicap for m in all_mems if m.game_handicap not \
-        in [None, hcp] and (m.game is None or m.game.league_game)
-    ]
+def revert_player_hcp(player_mem):
+    current_hcps = models.PlayerMembership.objects.filter(
+        player=player_mem.player,
+        game_handicap__isnull=False,
+        game__league_game=True
+    ).exclude(id__in=[player_mem.id]).values_list("game_handicap", flat=True)
     hcps = list(current_hcps)
-    player.update_handicap(get_avg(hcps, 1))
+    update_player_hcp(get_avg(hcps, 1))
 
 
 def score_game(game):
-    hole_list = get_hole_list_for_game(game)
-    # all_scores = get_all_scores_for_game(game)
+    # hole_list = get_hole_list_for_game(game)
+    # all_scores = collect_skin_data(game)
     # for hole in all_scores:
     #     for score in hole['scores']:
     #         if score['strokes'] == 0:
     #             raise ValueError(f"Player {score['player']} has not completed hole {hole['name']}")
-    hole_data = get_hole_data_for_game(game, final_scores=True)
-    scores = score_hole_data(hole_data, game)
+    hole_data = collect_hole_data(game, final_scores=True)
     game_score = {
-        # "all_scores": all_scores,
-        "hole_list": hole_list,
+        "scores": hole_data,
         "skins": False,
         "team_scores": False,
-        "scores": scores,
     }
+    if game.single_cost != 0:
+        game_score.update(
+            {"scores": score_hole_data_singles(hole_data, game)}
+        )
     if game.skin_cost != 0:
-        game_score.update({"skins": get_skins_hole_data(hole_data, game.skin_cost)})
+        game_score.update({"skins": score_skins_for_game(game)})
     if game.use_teams:
         game_score.update({"team_scores": score_teams(game)})
     if game.league_game:
         update_player_hcp_hole_data(hole_data)
+        create_random_teams(game)
+        score_teams_random(game)
     return game_score
 
 

@@ -122,11 +122,7 @@
   <div class="col-6">
     <div class="card">
       <div class="card-header fw-bold">
-        {% if current_player_count > 0 %}
-        Players - {{ current_player_count }}
-        {% else %}
         Players
-        {% endif %}
       </div>
       {% if game_data.status == "completed" %}
       {% get_scores game_data as final_scores %}
@@ -164,13 +160,12 @@
             <tr>
               {% if game_data.status == "setup" %}
               <th style="width: 5%;">&nbsp;</th>
-              {% elif game_data.status == "active" %}
-                {% if game_data.use_groups %}
-                <th>Group</th>
-                {% endif %}
-                {% if game_data.use_teams %}
-                <th>Team</th>
-                {% endif %}
+              {% endif %}
+              {% if game_data.use_groups %}
+              <th>Group</th>
+              {% endif %}
+              {% if game_data.use_teams %}
+              <th>Team</th>
               {% endif %}
               <th>Name</th>
               <th>HCP</th>
@@ -190,16 +185,15 @@
             <tr>
               {% if game_data.status == "setup" %}
               <td><button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#remove-player-modal" data-player-id="{{ player.id }}">Remove</button></td>
-              {% elif game_data.status == "active" %}
-                {% if game_data.use_groups %}
-                <td>{{ player_mem.group.name }}</td>
-                {% endif %}
-                {% if game_data.use_teams %}
-                <td>{{ player_mem.team.name }}</td>
-                {% endif %}
+              {% endif %}
+              {% if game_data.use_groups %}
+              <td>{{ player_mem.group.name }}</td>
+              {% endif %}
+              {% if game_data.use_teams %}
+              <td>{{ player_mem.team.name }}</td>
               {% endif %}
               <td>{{ player_mem.player.name }}</td>
-              <td>{{ player_mem.league_hcp }}</td>
+              <td>{{ player_mem.player.handicap }}</td>
               {% if game_data.game_type == "stableford" %}
               <td>{{ player_mem.points_needed }}</td>
               {% endif %}
@@ -227,7 +221,7 @@
   </div>
 </div>
 
-{% if hole_list and hole_data %}
+{% if game_data.status == "active" %}
   {% include "dashboard/active-scores.html" %}
 {% elif game_data.status == "completed" %}
   {% include "dashboard/completed-scores.html" %}

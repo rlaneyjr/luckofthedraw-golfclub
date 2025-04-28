@@ -15,13 +15,13 @@ def get_skins(game):
 # def get_all_scores(game):
 #     return game.score.get("all_scores")
 
-@register.simple_tag
-def get_hole_list(game):
-    return game.score.get("hole_list")
+# @register.simple_tag
+# def get_hole_list(game):
+#     return game.score.get("hole_list")
 
-@register.simple_tag
-def get_hole_data(game):
-    return game.score.get("hole_data")
+# @register.simple_tag
+# def get_hole_data(game):
+#     return game.score.get("hole_data")
 
 @register.simple_tag
 def get_scores(game):

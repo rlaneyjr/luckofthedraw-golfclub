@@ -78,7 +78,7 @@
             </tr>
           </thead>
           <tbody class="align-middle">
-            {% for hole in hole_list %}
+            {% for hole in course_data.holes %}
             <tr>
               <td><a href="{% url 'dashboard:hole_detail' hole.id %}" class="btn btn-primary btn-sm">View</a></td>
                 <td>{{hole.name}}</td>

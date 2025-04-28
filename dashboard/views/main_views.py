@@ -95,7 +95,6 @@ def player_list(request):
 def course_detail(request, pk):
     course_data = get_object_or_404(models.GolfCourse, pk=pk)
     course_location = None
-    hole_list = models.Hole.objects.filter(course=course_data).order_by("order")
     if all([course_data.city, course_data.state, course_data.zip_code]):
         course_location = (
             f"{course_data.city}, {course_data.state}, {course_data.zip_code}"
@@ -106,7 +105,6 @@ def course_detail(request, pk):
         {
             "course_data": course_data,
             "course_location": course_location,
-            "hole_list": hole_list,
         },
     )
 
@@ -131,11 +129,10 @@ def hole_detail(request, pk):
 
 @login_required
 def game_detail(request, pk):
-    hole_data = hole_list = False
+    hole_data = False
     game_data = get_object_or_404(models.Game, pk=pk)
     if game_data.status == "active":
-        hole_list = utils.get_hole_list_for_game(game_data)
-        hole_data = utils.get_hole_data_for_game(game_data)
+        hole_data = utils.collect_hole_data(game_data)
     return render(
         request,
         "dashboard/game-detail.html",
@@ -144,9 +141,8 @@ def game_detail(request, pk):
             "game_data": game_data,
             "players_not_in_game": utils.get_players_not_in_game(game_data),
             "current_player_count": game_data.players.count(),
-            "current_mems": utils.get_game_player_mems(game_data),
+            "current_mems": game_data.player_mems,
             "hole_data": hole_data,
-            "hole_list": hole_list,
         },
     )
 
@@ -154,8 +150,8 @@ def game_detail(request, pk):
 @login_required
 def game_current_scores(request, pk):
     game_data = get_object_or_404(models.Game, pk=pk)
-    hole_list = utils.get_hole_list_for_game(game_data)
-    hole_data = utils.get_hole_data_for_game(game_data)
+    if game_data.status == "active":
+        hole_data = utils.collect_hole_data(game_data)
     return render(
         request,
         "dashboard/game-current-scores.html",
@@ -163,7 +159,6 @@ def game_current_scores(request, pk):
             "user_is_admin": utils.is_admin(request.user),
             "game_data": game_data,
             "hole_data": hole_data,
-            "hole_list": hole_list,
         },
     )
 

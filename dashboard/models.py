@@ -122,16 +122,31 @@ class StrokeChoices(models.IntegerChoices):
     _9 = 9
 
 
+# class League(models.Model):
+#     name = models.CharField(max_length=128)
+#     players = models.ManyToManyField(
+#         "Players",
+#         through="PlayerMembership",
+#         through_fields=("player", "leagues")
+#     )
+#
+#     class Meta:
+#         unique_together = ["name", "players"]
+#         ordering = ["name"]
+#
+#     def __str__(self):
+#         return f"{self.name}"
+#
+#     def __repr__(self):
+#         return f"League[{self}]"
+
+
 class GolfCourse(models.Model):
     name = models.CharField(max_length=128)
     initials = models.CharField(
         verbose_name="Course Initials",
         max_length=5,
         default="GC"
-    )
-    hole_count = models.PositiveSmallIntegerField(
-        choices=HolesToPlayChoices.choices,
-        default=HolesToPlayChoices.HOLES_18
     )
     tee_time_link = models.URLField(blank=True)
     website_link = models.URLField(blank=True)
@@ -150,16 +165,36 @@ class GolfCourse(models.Model):
         blank=True,
         null=True
     )
-    par = models.PositiveSmallIntegerField(
-        default=None,
-        blank=True,
-        null=True
-    )
-    points = models.PositiveSmallIntegerField(
-        default=None,
-        blank=True,
-        null=True
-    )
+    # hole_count = models.PositiveSmallIntegerField(
+    #     choices=HolesToPlayChoices.choices,
+    #     default=HolesToPlayChoices.HOLES_18
+    # )
+    # par = models.PositiveSmallIntegerField(
+    #     default=None,
+    #     blank=True,
+    #     null=True
+    # )
+    # points = models.PositiveSmallIntegerField(
+    #     default=None,
+    #     blank=True,
+    #     null=True
+    # )
+
+    @property
+    def holes(self):
+        return Hole.objects.filter(course=self).order_by("order")
+
+    @property
+    def hole_count(self):
+        return self.holes.count()
+
+    @property
+    def par(self):
+        return sum([h.par for h in self.holes])
+
+    @property
+    def points(self):
+        return utils.round_up(self.par/2)
 
     class Meta:
         unique_together = ["name", "city", "state"]
@@ -171,15 +206,15 @@ class GolfCourse(models.Model):
     def __repr__(self):
         return f"Course[{self.initials}]"
 
-    def __update_par_points(self):
-        holes = Hole.objects.filter(course=self)
-        if holes.count() == self.hole_count:
-            self.par = sum([h.par for h in holes])
-            self.points = utils.round_up(self.par/2)
-
-    def save(self, *args, **kwargs):
-        self.__update_par_points()
-        super().save(*args, **kwargs)
+    # def __update_par_points(self):
+    #     holes = Hole.objects.filter(course=self)
+    #     if self.holes.count() == self.hole_count:
+    #         self.par = sum([h.par for h in self.holes])
+    #         self.points = utils.round_up(self.par/2)
+    #
+    # def save(self, *args, **kwargs):
+    #     self.__update_par_points()
+    #     super().save(*args, **kwargs)
 
 
 class Hole(models.Model):
@@ -320,6 +355,14 @@ class Game(models.Model):
     )
 
     @property
+    def holes(self):
+        return utils.get_holes_for_game(self)
+
+    @property
+    def hole_list(self):
+        return utils.get_hole_list_for_game(self)
+
+    @property
     def par(self):
         if self.holes_to_play == HolesToPlayChoices.HOLES_9:
             return utils.get_par_for_game(self)
@@ -366,9 +409,6 @@ class Game(models.Model):
         if self.course.hole_count == 18:
             if which_holes == "front":
                 self.which_holes = WhichHolesChoices.FRONT
-                self.holes_to_play = HolesToPlayChoices.HOLES_9
-            elif which_holes == "back":
-                self.which_holes = WhichHolesChoices.BACK
                 self.holes_to_play = HolesToPlayChoices.HOLES_9
             else:
                 self.which_holes = WhichHolesChoices.ALL
@@ -495,12 +535,7 @@ class Player(models.Model):
         return f"Player[{self.name}]"
 
     def update_handicap(self, hcp=None):
-        if hcp is not None:
-            self.handicap = hcp
-            self.save()
-        elif self.handicap != self.league_hcp:
-            self.handicap = self.league_hcp
-            self.save()
+        utils.update_player_hcp(self, hcp)
 
     # def save(self, *args, **kwargs):
     #     if self.handicap != self.league_hcp:
@@ -543,6 +578,39 @@ class Team(models.Model):
         unique_together = ["name", "game"]
 
 
+class RandomTeam(models.Model):
+    name = models.CharField(max_length=32)
+    game = models.ForeignKey(Game, on_delete=models.CASCADE)
+    players = models.ManyToManyField(
+        "Player",
+        through="PlayerMembership",
+        through_fields=("random", "player")
+    )
+
+    @property
+    def score(self):
+        if self.players.count() > 0:
+            return sum([int(p.game_score) for p in self.players.all()])
+        return 0
+
+    @property
+    def points(self):
+        if self.players.count() > 0:
+            return sum([int(p.game_points) for p in self.players.all()])
+        return 0
+
+    def __str__(self):
+        return f"{self.name}"
+
+    def __repr__(self):
+        return f"RandomTeam[{self.name}]"
+
+    class Meta:
+        ordering = ["game", "name"]
+        verbose_name_plural = "randomteams"
+        unique_together = ["name", "game"]
+
+
 class Group(models.Model):
     name = models.CharField(
         max_length=32,
@@ -568,15 +636,69 @@ class Group(models.Model):
         unique_together = ["name", "game"]
 
 
-class PlayerMembership(models.Model):
+class LeagueScore(models.Model):
     player = models.ForeignKey(Player, on_delete=models.CASCADE)
-    game = models.ForeignKey(
-        Game,
-        on_delete=models.CASCADE,
+    course = models.ForeignKey(
+        GolfCourse,
+        on_delete=models.PROTECT,
+        default=get_ttcc_course,
+    )
+    handicap = models.SmallIntegerField(
         default=None,
         blank=True,
         null=True
     )
+    score = models.SmallIntegerField(
+        default=None,
+        blank=True,
+        null=True
+    )
+    points = models.SmallIntegerField(
+        default=None,
+        blank=True,
+        null=True
+    )
+    random_won = MoneyField(
+        name="random_won",
+        verbose_name="Random draw money won",
+        max_digits=3,
+        decimal_places=0,
+        default=0,
+        default_currency="USD",
+        validators=[
+            MinMoneyValidator({"USD": 0}),
+            MaxMoneyValidator({"USD": 1000}),
+        ],
+    )
+    skins_won = MoneyField(
+        name="skins_won",
+        verbose_name="Skins money won",
+        max_digits=3,
+        decimal_places=0,
+        default=0,
+        default_currency="USD",
+        validators=[
+            MinMoneyValidator({"USD": 0}),
+            MaxMoneyValidator({"USD": 1000}),
+        ],
+    )
+    singles_won = MoneyField(
+        name="singles_won",
+        verbose_name="Singles money won",
+        max_digits=3,
+        decimal_places=0,
+        default=0,
+        default_currency="USD",
+        validators=[
+            MinMoneyValidator({"USD": 0}),
+            MaxMoneyValidator({"USD": 1000}),
+        ],
+    )
+
+
+class PlayerMembership(models.Model):
+    player = models.ForeignKey(Player, on_delete=models.CASCADE)
+    game = models.ForeignKey(Game, on_delete=models.CASCADE)
     team = models.ForeignKey(
         Team,
         on_delete=models.SET_DEFAULT,
@@ -586,6 +708,13 @@ class PlayerMembership(models.Model):
     )
     group = models.ForeignKey(
         Group,
+        on_delete=models.SET_DEFAULT,
+        default=None,
+        blank=True,
+        null=True
+    )
+    random = models.ForeignKey(
+        RandomTeam,
         on_delete=models.SET_DEFAULT,
         default=None,
         blank=True,
@@ -608,12 +737,51 @@ class PlayerMembership(models.Model):
         blank=True,
         null=True
     )
+    random_money = MoneyField(
+        name="random_money",
+        verbose_name="Random draw money won",
+        max_digits=3,
+        decimal_places=0,
+        default=0,
+        default_currency="USD",
+        validators=[
+            MinMoneyValidator({"USD": 0}),
+            MaxMoneyValidator({"USD": 1000}),
+        ],
+    )
+    skin_money = MoneyField(
+        name="skin_money",
+        verbose_name="Skins money won",
+        max_digits=3,
+        decimal_places=0,
+        default=0,
+        default_currency="USD",
+        validators=[
+            MinMoneyValidator({"USD": 0}),
+            MaxMoneyValidator({"USD": 1000}),
+        ],
+    )
+    single_money = MoneyField(
+        name="single_money",
+        verbose_name="Singles money won",
+        max_digits=3,
+        decimal_places=0,
+        default=0,
+        default_currency="USD",
+        validators=[
+            MinMoneyValidator({"USD": 0}),
+            MaxMoneyValidator({"USD": 1000}),
+        ],
+    )
 
     @property
     def is_official(self):
-        if all([self.game_handicap, self.game_points, self.game_score]) and \
-                (self.game is None or (self.game.league_game and \
-                self.game.status == GameStatusChoices.COMPLETED)):
+        if all([
+                self.game.league_game,
+                self.game_handicap,
+                self.game_points,
+                self.game_score
+            ]) and self.game.status == GameStatusChoices.COMPLETED:
             return True
         return False
 
@@ -642,9 +810,7 @@ class PlayerMembership(models.Model):
         return self.player.league_score
 
     def __str__(self):
-        name = f"{self.name}"
-        if self.game is not None:
-            name = f"{name}-{self.game}"
+        name = f"{self.name}-{self.game}"
         if self.group is not None:
             name = f"{name}-{self.group}"
         if self.team is not None:
@@ -656,6 +822,18 @@ class PlayerMembership(models.Model):
 
     def score_game(self, game_score, game_points, game_hcp):
         if all([game_score, game_points, game_hcp]):
+            if self.game.league_game:
+                score = LeagueScore.objects.create(
+                    player=self.player,
+                    course=self.game.course,
+                    handicap=game_hcp,
+                    score=game_score,
+                    points=game_points,
+                    random_won=self.random_money,
+                    skins_won=self.skin_money,
+                    singles_won=self.single_money
+                )
+                score.save()
             self.game_score = game_score
             self.game_points = game_points
             self.game_handicap = game_hcp
@@ -666,10 +844,10 @@ class PlayerMembership(models.Model):
             utils.revert_player_hcp(self.player, self.game_handicap)
         super().delete(*args, **kwargs)
 
-    def save(self, *args, **kwargs):
-        if self.is_official:
-            utils.update_player_hcp(self.player, self.game_handicap)
-        super().save(*args, **kwargs)
+    # def save(self, *args, **kwargs):
+    #     if self.is_official:
+    #         utils.update_player_hcp(self.player, self.game_handicap)
+    #     super().save(*args, **kwargs)
 
     class Meta:
         order_with_respect_to = "player"
