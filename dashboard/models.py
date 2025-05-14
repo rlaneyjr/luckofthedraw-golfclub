@@ -165,20 +165,6 @@ class GolfCourse(models.Model):
         blank=True,
         null=True
     )
-    # hole_count = models.PositiveSmallIntegerField(
-    #     choices=HolesToPlayChoices.choices,
-    #     default=HolesToPlayChoices.HOLES_18
-    # )
-    # par = models.PositiveSmallIntegerField(
-    #     default=None,
-    #     blank=True,
-    #     null=True
-    # )
-    # points = models.PositiveSmallIntegerField(
-    #     default=None,
-    #     blank=True,
-    #     null=True
-    # )
 
     @property
     def holes(self):
@@ -205,16 +191,6 @@ class GolfCourse(models.Model):
 
     def __repr__(self):
         return f"Course[{self.initials}]"
-
-    # def __update_par_points(self):
-    #     holes = Hole.objects.filter(course=self)
-    #     if self.holes.count() == self.hole_count:
-    #         self.par = sum([h.par for h in self.holes])
-    #         self.points = utils.round_up(self.par/2)
-    #
-    # def save(self, *args, **kwargs):
-    #     self.__update_par_points()
-    #     super().save(*args, **kwargs)
 
 
 class Hole(models.Model):
@@ -365,7 +341,7 @@ class Game(models.Model):
     @property
     def par(self):
         if self.holes_to_play == HolesToPlayChoices.HOLES_9:
-            return utils.get_par_for_game(self)
+            return utils.calculate_par_for_holes(self.holes)
         else:
             return self.course.par
 
@@ -427,6 +403,14 @@ class Game(models.Model):
             self.game_type = GameTypeChoices.STROKE
         self.save()
 
+    def __league_check(self):
+        _val = False
+        if self.league_game:
+            _val = True
+            if self.holes_to_play == HolesToPlayChoices.HOLES_9:
+                raise ValidationError("You must play 18 holes for league game")
+        return _val
+
     def start(self, **kwargs):
         for key, value in kwargs.items():
             if key == "which_holes":
@@ -436,6 +420,7 @@ class Game(models.Model):
             elif hasattr(self, key):
                 setattr(self, key, value)
                 self.save()
+        self.__league_check()
         utils.create_hole_scores_for_game(self)
         if self.use_teams or all([self.use_groups, self.use_teams]):
             utils.create_teams_for_game(self)
@@ -458,13 +443,14 @@ class Game(models.Model):
             self.save()
 
     def clean(self):
+        self.__league_check()
         num_holes = self.course.hole_count - self.holes_to_play
         if num_holes == 9 and self.which_holes == WhichHolesChoices.ALL:
             raise ValidationError("Please choose front or back")
 
-    # def delete(self, *args, **kwargs):
-    #     utils.clean_game(self)
-    #     super().delete(*args, **kwargs)
+    def delete(self, *args, **kwargs):
+        utils.clean_game(self)
+        super().delete(*args, **kwargs)
 
     class Meta:
         ordering = ["date_played", "status"]
@@ -556,9 +542,10 @@ class Team(models.Model):
         through="PlayerMembership",
         through_fields=("team", "player")
     )
-    handicap = models.DecimalField(
-        max_digits=3, decimal_places=1, default=20.0
-    )
+
+    @property
+    def handicap(self):
+        return utils.calculate_players_handicap(self.players.all())
 
     def __str__(self):
         return f"{self.name}"
@@ -588,16 +575,8 @@ class RandomTeam(models.Model):
     )
 
     @property
-    def score(self):
-        if self.players.count() > 0:
-            return sum([int(p.game_score) for p in self.players.all()])
-        return 0
-
-    @property
-    def points(self):
-        if self.players.count() > 0:
-            return sum([int(p.game_points) for p in self.players.all()])
-        return 0
+    def handicap(self):
+        return utils.calculate_players_handicap(self.players.all())
 
     def __str__(self):
         return f"{self.name}"
@@ -624,6 +603,10 @@ class Group(models.Model):
         through_fields=("group", "player")
     )
 
+    @property
+    def handicap(self):
+        return utils.calculate_players_handicap(self.players.all())
+
     def __str__(self):
         return f"{self.name}"
 
@@ -634,66 +617,6 @@ class Group(models.Model):
         ordering = ["game", "name"]
         verbose_name_plural = "groups"
         unique_together = ["name", "game"]
-
-
-class LeagueScore(models.Model):
-    player = models.ForeignKey(Player, on_delete=models.CASCADE)
-    course = models.ForeignKey(
-        GolfCourse,
-        on_delete=models.PROTECT,
-        default=get_ttcc_course,
-    )
-    handicap = models.SmallIntegerField(
-        default=None,
-        blank=True,
-        null=True
-    )
-    score = models.SmallIntegerField(
-        default=None,
-        blank=True,
-        null=True
-    )
-    points = models.SmallIntegerField(
-        default=None,
-        blank=True,
-        null=True
-    )
-    random_won = MoneyField(
-        name="random_won",
-        verbose_name="Random draw money won",
-        max_digits=3,
-        decimal_places=0,
-        default=0,
-        default_currency="USD",
-        validators=[
-            MinMoneyValidator({"USD": 0}),
-            MaxMoneyValidator({"USD": 1000}),
-        ],
-    )
-    skins_won = MoneyField(
-        name="skins_won",
-        verbose_name="Skins money won",
-        max_digits=3,
-        decimal_places=0,
-        default=0,
-        default_currency="USD",
-        validators=[
-            MinMoneyValidator({"USD": 0}),
-            MaxMoneyValidator({"USD": 1000}),
-        ],
-    )
-    singles_won = MoneyField(
-        name="singles_won",
-        verbose_name="Singles money won",
-        max_digits=3,
-        decimal_places=0,
-        default=0,
-        default_currency="USD",
-        validators=[
-            MinMoneyValidator({"USD": 0}),
-            MaxMoneyValidator({"USD": 1000}),
-        ],
-    )
 
 
 class PlayerMembership(models.Model):
@@ -820,24 +743,28 @@ class PlayerMembership(models.Model):
     def __repr__(self):
         return f"PlayerMembership[{str(self).replace('-', ':')}]"
 
+    def __score_league(self):
+        if self.game.__league_check():
+            score = LeagueScore.objects.create(
+                member=self,
+                course=self.game.course,
+                handicap=self.game_handicap,
+                score=self.game_score,
+                points=self.game_points,
+                random_won=self.random_money,
+                skins_won=self.skin_money,
+                singles_won=self.single_money
+            )
+            score.save()
+
+
     def score_game(self, game_score, game_points, game_hcp):
         if all([game_score, game_points, game_hcp]):
-            if self.game.league_game:
-                score = LeagueScore.objects.create(
-                    player=self.player,
-                    course=self.game.course,
-                    handicap=game_hcp,
-                    score=game_score,
-                    points=game_points,
-                    random_won=self.random_money,
-                    skins_won=self.skin_money,
-                    singles_won=self.single_money
-                )
-                score.save()
             self.game_score = game_score
             self.game_points = game_points
             self.game_handicap = game_hcp
             self.save()
+        self.__score_league()
 
     def delete(self, *args, **kwargs):
         if self.is_official:
@@ -851,6 +778,81 @@ class PlayerMembership(models.Model):
 
     class Meta:
         order_with_respect_to = "player"
+
+
+class LeagueScore(models.Model):
+    player = models.ForeignKey(Player, on_delete=models.CASCADE)
+    course = models.ForeignKey(
+        GolfCourse,
+        on_delete=models.PROTECT,
+        default=get_ttcc_course,
+    )
+    handicap_played = models.SmallIntegerField(
+        default=None,
+        blank=True,
+        null=True
+    )
+    handicap_adjustment = models.SmallIntegerField(
+        default=None,
+        blank=True,
+        null=True
+    )
+    score = models.SmallIntegerField(
+        default=None,
+        blank=True,
+        null=True
+    )
+    points = models.SmallIntegerField(
+        default=None,
+        blank=True,
+        null=True
+    )
+    random_won = MoneyField(
+        name="random_won",
+        verbose_name="Random draw money won",
+        max_digits=3,
+        decimal_places=0,
+        default=0,
+        default_currency="USD",
+        validators=[
+            MinMoneyValidator({"USD": 0}),
+            MaxMoneyValidator({"USD": 1000}),
+        ],
+    )
+    skins_won = MoneyField(
+        name="skins_won",
+        verbose_name="Skins money won",
+        max_digits=3,
+        decimal_places=0,
+        default=0,
+        default_currency="USD",
+        validators=[
+            MinMoneyValidator({"USD": 0}),
+            MaxMoneyValidator({"USD": 1000}),
+        ],
+    )
+    singles_won = MoneyField(
+        name="singles_won",
+        verbose_name="Singles money won",
+        max_digits=3,
+        decimal_places=0,
+        default=0,
+        default_currency="USD",
+        validators=[
+            MinMoneyValidator({"USD": 0}),
+            MaxMoneyValidator({"USD": 1000}),
+        ],
+    )
+
+    @property
+    def points_needed(self):
+        return self.course.points - utils.round_up(self.handicap_played or 20)
+
+    def __str__(self):
+        return self.player.name
+
+    def __repr__(self):
+        return f"LeagueScore[{str(self)}-{self.date}]"
 
 
 class HoleScore(models.Model):

@@ -133,6 +133,12 @@ def get_current_players_for_game(game):
     return current_players
 
 
+def calculate_players_handicap(players):
+    if len(players) > 0:
+        all_hcps = [p.handicap for p in players]
+        handicap = get_avg(all_hcps)
+    return handicap or 20
+
 def get_team_hcp(team, game):
     team_members = models.PlayerMembership.objects.filter(game=game, team=team)
     all_hcps = [_t.player.handicap for _t in team_members]
@@ -197,14 +203,14 @@ def get_holes_for_game(game):
 
 
 def get_hole_scores_for_game(game):
-    return models.HoleScore.objects.filter(player__in=[game.player_mems]).order_by("player")
+    return models.HoleScore.objects.filter(player__in=[game.players]).order_by("player")
 
 
 def get_hole_scores_for_player_mem(player_mem):
     return models.HoleScore.objects.filter(player=player_mem).order_by("hole")
 
 
-def get_par_for_game(game):
+def calculate_par_for_holes(game):
     return sum([h.par for h in get_holes_for_game(game)])
 
 
@@ -215,7 +221,7 @@ def clean_game(game):
     if game.use_teams:
         for team in get_teams_for_game(game):
             team.delete()
-    for player_mem in models.PlayerMembership.objects.filter(game=game):
+    for player_mem in game.player_mems:
         player_mem.delete()
 
 
@@ -904,14 +910,14 @@ def get_player_item_league_avg(player, item, required_length: int=None):
 
 
 def calculate_player_league_hcp(player, hcp=None):
-    if hcp is not None:
-        league_hcps = get_player_item_league_avg(player, "game_handicap", required_length=2)
-    else:
-        league_hcps = get_player_item_league_avg(player, "game_handicap", required_length=3)
+    league_hcp = 20
+    rl = 3 if hcp is None else 2
+    league_hcps = get_player_item_league_avg(player, "game_handicap", rl)
     if league_hcps:
         if hcp is not None:
             league_hcps.append(hcp)
-        return get_avg(league_hcps, 1)
+        league_hcp = get_avg(league_hcps, 1)
+    return league_hcp
 
 
 def update_player_hcp(player, hcp=None):

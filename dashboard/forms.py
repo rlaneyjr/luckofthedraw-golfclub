@@ -31,7 +31,6 @@ class GolfCourseForm(forms.ModelForm):
                 "Create Course",
                 "name",
                 "initials",
-                "hole_count",
                 "tee_time_link",
                 "website_link",
                 "city",
@@ -48,7 +47,6 @@ class GolfCourseForm(forms.ModelForm):
         fields = [
             "name",
             "initials",
-            "hole_count",
             "tee_time_link",
             "website_link",
             "city",
@@ -68,7 +66,6 @@ class EditGolfCourseForm(forms.ModelForm):
                 "Edit Course",
                 "name",
                 "initials",
-                "hole_count",
                 "tee_time_link",
                 "website_link",
                 "city",
@@ -85,7 +82,6 @@ class EditGolfCourseForm(forms.ModelForm):
         fields = [
             "name",
             "initials",
-            "hole_count",
             "tee_time_link",
             "website_link",
             "city",
