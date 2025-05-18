@@ -149,6 +149,7 @@ def game_detail(request, pk):
 
 @login_required
 def game_current_scores(request, pk):
+    hole_data = False
     game_data = get_object_or_404(models.Game, pk=pk)
     if game_data.status == "active":
         hole_data = utils.collect_hole_data(game_data)
@@ -166,55 +167,38 @@ def game_current_scores(request, pk):
 @login_required
 def game_score(request, pk):
     game_data = get_object_or_404(models.Game, pk=pk)
-    game_data.stop()
-    return render(
-        request,
-        "dashboard/game-score.html",
-        {
-            "game_data": game_data,
-        },
-    )
+    if game_data.status == "active":
+        game_data.stop()
+    if game_data.status == "completed":
+        return render(
+            request,
+            "dashboard/game-score.html",
+            {"game_data": game_data},
+        )
+    return game_current_scores(request, pk)
 
 
 @login_required
 def game_score_detail(request, pk):
     game_data = get_object_or_404(models.Game, pk=pk)
+    filter_scores = request.GET.get("filter_scores", False)
+    current_scores = False
     if game_data.status != "completed":
         current_scores = []
-        filter_scores = request.GET.get("filter_scores", "false")
-        for player in game_data.players.all():
-            player_game_link = models.PlayerMembership.objects.filter(
-                game=game_data, player=player
-            ).first()
-            if filter_scores == "true":
-                current_scores.extend(
-                    models.HoleScore.objects.filter(
-                        player=player_game_link,
-                        strokes__gt=0
-                    )
-                )
-            else:
-                current_scores.extend(
-                    models.HoleScore.objects.filter(player=player_game_link)
-                )
-        return render(
-            request,
-            "dashboard/game-score-detail.html",
-            {
-                "game_data": game_data,
-                "current_scores": current_scores,
-                "filter_scores": filter_scores,
-            },
-        )
-    else:
-        return render(
-            request,
-            "dashboard/game-score-detail.html",
-            {
-                "game_data": game_data,
-                "current_scores": False,
-            },
-        )
+        for player_mem in game_data.player_mems:
+            player_holes = models.HoleScore.objects.filter(player=player_mem)
+            if filter_scores:
+                player_holes.filter(strokes__gt=0)
+            current_scores.extend(player_holes)
+    return render(
+        request,
+        "dashboard/game-score-detail.html",
+        {
+            "game_data": game_data,
+            "current_scores": current_scores,
+            "filter_scores": filter_scores,
+        },
+    )
 
 
 @login_required

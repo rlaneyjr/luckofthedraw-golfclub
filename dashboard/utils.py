@@ -1,6 +1,7 @@
 import json, math, random
 from dashboard import models
 from django.db.models import Q
+from django.utils.translation import gettext_lazy as _
 from djmoney.money import Money
 
 # Assuming a model named 'Item' with fields 'field1' and 'field2'
@@ -24,6 +25,17 @@ points_map = {
     1: 1,
     2: 0,
 }
+
+
+points_mapper = (
+    {'score': -4, 'points': 6},
+    {'score': -3, 'points': 5},
+    {'score': -2, 'points': 4},
+    {'score': -1, 'points': 3},
+    {'score': 0, 'points': 2},
+    {'score': 1, 'points': 1},
+    {'score': 2, 'points': 0}
+)
 
 
 def get_score_word(strokes, par):

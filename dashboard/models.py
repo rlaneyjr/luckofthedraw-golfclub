@@ -871,21 +871,22 @@ class HoleScore(models.Model):
 
     @property
     def max_strokes(self):
-        return self.hole.par + max(utils.points_map.keys())
+        max_score = max([p.get('score') for p in utils.points_mapper])
+        return self.hole.par + max_score
 
     @property
     def score(self):
         if self.is_scored:
             return self.strokes - self.hole.par
-        else:
-            return 0
+        return 0
 
     @property
     def points(self):
         if self.is_scored:
-            return utils.points_map.get(self.score, 0)
-        else:
-            return 0
+            for p in utils.points_mapper:
+                if self.score == p.get('score'):
+                    return p.get('points')
+        return 0
 
     @property
     def score_name(self):
@@ -898,7 +899,7 @@ class HoleScore(models.Model):
         return f"HoleScore[{self.player}:{self.hole}]"
 
     def score_hole(self, strokes: int=None):
-        if isinstance(strokes, int) and self.strokes != strokes:
+        if self.strokes != strokes:
             if strokes > self.max_strokes:
                 self.strokes = self.max_strokes
             else:
