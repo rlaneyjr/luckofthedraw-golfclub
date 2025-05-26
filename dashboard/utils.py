@@ -15,22 +15,26 @@ from djmoney.money import Money
 # random_offset = random.randint(0,count-1)
 # MyModel.objects.all()[random_offset].get()
 
+
+# STATICS
+TTCC_COURSE = {
+    'name': 'Tillery Tradition Country Club',
+    'initials': 'TTCC',
+    'city': 'Mt. Gilead',
+    'state': 'NC',
+    'zip': '27306',
+    'card': 'images/ttcc_card.png',
+    'overview': 'images/ttcc_overview.png',
+    'web_link': 'https://www.tillerycc.com',
+    'teetime_link': 'https://foreupsoftware.com/index.php/booking/21675/8524#/teetimes'
+}
 LEAGUE_MIN_HCP_REQUIRED = 3
 LEAGUE_MAX_HCP = 20
-points_map = {
-    -4: 6,
-    -3: 5,
-    -2: 4,
-    -1: 3,
-    0: 2,
-    1: 1,
-    2: 0,
-}
-points_mapper = (
-    {'score': -4, 'points': 6},
-    {'score': -3, 'points': 5},
-    {'score': -2, 'points': 4},
-    {'score': -1, 'points': 3},
+POINTS_MAPPER = (
+    {'score': -4, 'points': 7},
+    {'score': -3, 'points': 6},
+    {'score': -2, 'points': 5},
+    {'score': -1, 'points': 4},
     {'score': 0, 'points': 2},
     {'score': 1, 'points': 1},
     {'score': 2, 'points': 0}

@@ -10,10 +10,11 @@ from djmoney.money import Money
 from dashboard import utils
 
 User = get_user_model()
+TTCC = utils.TTCC_COURSE
 
 
 def get_ttcc_course():
-    return GolfCourse.objects.get(initials="TTCC").id
+    return GolfCourse.objects.get(initials=TTCC.initials).id
 
 
 class GameTypeChoices(models.TextChoices):
@@ -122,46 +123,30 @@ class StrokeChoices(models.IntegerChoices):
     _9 = 9
 
 
-# class League(models.Model):
-#     name = models.CharField(max_length=128)
-#     players = models.ManyToManyField(
-#         "Players",
-#         through="PlayerMembership",
-#         through_fields=("player", "leagues")
-#     )
-#
-#     class Meta:
-#         unique_together = ["name", "players"]
-#         ordering = ["name"]
-#
-#     def __str__(self):
-#         return f"{self.name}"
-#
-#     def __repr__(self):
-#         return f"League[{self}]"
-
-
 class GolfCourse(models.Model):
-    name = models.CharField(max_length=128)
+    name = models.CharField(max_length=128, default=TTCC.name)
     initials = models.CharField(
         verbose_name="Course Initials",
         max_length=5,
-        default="GC"
+        default=TTCC.initials
     )
-    tee_time_link = models.URLField(blank=True)
-    website_link = models.URLField(blank=True)
-    city = models.CharField(max_length=128, blank=True)
-    state = models.CharField(max_length=64, blank=True)
-    zip_code = models.CharField(max_length=128, blank=True)
+    tee_time_link = models.URLField(
+        default=TTCC.teetime_link,
+        blank=True
+    )
+    website_link = models.URLField(default=TTCC.web_link, blank=True)
+    city = models.CharField(max_length=128, default=TTCC.city, blank=True)
+    state = models.CharField(max_length=64, default=TTCC.state, blank=True)
+    zip_code = models.CharField(max_length=128, default=TTCC.zip, blank=True)
     card = models.ImageField(
         upload_to="images",
-        default=None,
+        default=TTCC.card,
         blank=True,
         null=True
     )
     overview = models.ImageField(
         upload_to="images",
-        default=None,
+        default=TTCC.overview,
         blank=True,
         null=True
     )
@@ -249,17 +234,33 @@ class Tee(models.Model):
         ordering = ["hole", "-distance"]
 
 
+class League(models.Model):
+    name = models.CharField(max_length=128, unique=True)
+    course = models.ForeignKey(
+        GolfCourse,
+        on_delete=models.PROTECT,
+        default=get_ttcc_course
+    )
+    players = models.ManyToManyField("Player")
+
+    class Meta:
+        unique_together = ["name", "course"]
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name}"
+
+    def __repr__(self):
+        return f"League[{self}]"
+
+
 class Game(models.Model):
     """
     singles = per group
     blind draw = per game overall
     skins = per game overall
     """
-    course = models.ForeignKey(
-        GolfCourse,
-        on_delete=models.PROTECT,
-        default=get_ttcc_course,
-    )
+    league = models.ForeignKey(League, on_delete=models.CASCADE)
     game_type = models.CharField(
         max_length=32,
         choices=GameTypeChoices.choices,
@@ -343,7 +344,7 @@ class Game(models.Model):
         if self.holes_to_play == HolesToPlayChoices.HOLES_9:
             return utils.calculate_par_for_holes(self.holes)
         else:
-            return self.course.par
+            return self.league.course.par
 
     @property
     def player_mems(self):
@@ -355,7 +356,7 @@ class Game(models.Model):
 
     @property
     def points(self):
-        return self.course.points
+        return self.league.course.points
 
     @property
     def skin_count(self):
@@ -392,7 +393,7 @@ class Game(models.Model):
         return False
 
     def set_holes(self, which_holes="all"):
-        if self.course.hole_count == 18:
+        if self.league.course.hole_count == 18:
             if which_holes == "front":
                 self.which_holes = WhichHolesChoices.FRONT
                 self.holes_to_play = HolesToPlayChoices.HOLES_9
@@ -463,6 +464,7 @@ class Game(models.Model):
 
 
 class Player(models.Model):
+    league = models.ForeignKey(League, on_delete=models.PROTECT)
     first_name = models.CharField(max_length=32)
     last_name = models.CharField(max_length=32)
     email = models.EmailField(
@@ -644,7 +646,14 @@ class Group(models.Model):
 
 class PlayerMembership(models.Model):
     player = models.ForeignKey(Player, on_delete=models.CASCADE)
-    game = models.ForeignKey(Game, on_delete=models.CASCADE)
+    league = models.ForeignKey(League, on_delete=models.CASCADE)
+    game = models.ForeignKey(
+        Game,
+        on_delete=models.CASCADE,
+        default=None,
+        blank=True,
+        null=True
+    )
     team = models.ForeignKey(
         Team,
         on_delete=models.SET_DEFAULT,
@@ -729,7 +738,7 @@ class PlayerMembership(models.Model):
 
     @property
     def is_official(self):
-        if all(
+        if self.game is None or all(
             [
                 self.game.is_completed,
                 self.game.league_game,
@@ -782,14 +791,9 @@ class PlayerMembership(models.Model):
             return True
         return False
 
-    def score_game(self, game_score, game_points, game_hcp):
-        if all([self.game.is_completed, game_score, game_points, game_hcp]):
-            self.game_score = game_score
-            self.game_points = game_points
-            self.game_handicap = game_hcp
-            self.save()
-        if self.is_official:
-            score = LeagueScore.objects.create(
+    def score_game(self, game_score):
+        if (self.game is None or self.game.is_completed) and game_score:
+            score = Score.objects.create(
                 date_played=self.game.date,
                 player=self.player,
                 course=self.game.course,
@@ -925,7 +929,7 @@ class HoleScore(models.Model):
 
     @property
     def max_strokes(self):
-        max_score = max([p.get('score') for p in utils.points_mapper])
+        max_score = max([p.get('score') for p in utils.POINTS_MAPPER])
         return self.hole.par + max_score
 
     @property
@@ -937,7 +941,7 @@ class HoleScore(models.Model):
     @property
     def points(self):
         if self.is_scored:
-            for p in utils.points_mapper:
+            for p in utils.POINTS_MAPPER:
                 if self.score == p.get('score'):
                     return p.get('points')
         return 0
@@ -972,7 +976,7 @@ class HoleScore(models.Model):
 
 
 class TeeTime(models.Model):
-    course = models.ForeignKey(GolfCourse, on_delete=models.CASCADE)
+    league = models.ForeignKey(League, on_delete=models.CASCADE)
     tee_time = models.DateTimeField(default=timezone.now)
     players = models.ManyToManyField("Player")
     holes_to_play = models.PositiveSmallIntegerField(
@@ -993,7 +997,7 @@ class TeeTime(models.Model):
         return f"TeeTime[{self.course}:{self.tee_time.date()}]"
 
     def clean(self):
-        num_holes = self.course.hole_count - self.holes_to_play
+        num_holes = self.league.course.hole_count - self.holes_to_play
         if num_holes == 9 and self.which_holes == WhichHolesChoices.ALL:
             raise ValidationError("Please choose front or back")
 
