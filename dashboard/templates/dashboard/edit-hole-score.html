@@ -1,10 +1,10 @@
 {% extends "base-dashboard.html" %}
 {% load crispy_forms_tags %}
 
-{% block page_name %}{{hole_score_data.hole.name}} {{hole_score_data.player.player.name}}{% endblock %}
+{% block page_name %}{{hole_score_data.hole.name}} {{hole_score_data.player.name}}{% endblock %}
 
 {% block button_bar %}
-<a href="{% url 'dashboard:hole_score_detail' hole_score_id %}" class="btn btn-sm btn-outline-secondary">Back to Hole Score Detail</a>
+<a href="{% url 'dashboard:game_score_detail' game_id %}" class="btn btn-sm btn-outline-secondary">Back to Score Details</a>
 {% endblock %}
 
 {% block content %}

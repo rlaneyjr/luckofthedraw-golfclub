@@ -82,6 +82,7 @@ class EditGolfCourseForm(forms.ModelForm):
         fields = [
             "name",
             "initials",
+            "hole_count",
             "tee_time_link",
             "website_link",
             "city",
@@ -351,6 +352,41 @@ class EditHoleForm(forms.ModelForm):
             "nickname",
             "par",
             "handicap",
+        ]
+
+
+class GolfCourseForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.layout = Layout(
+            Fieldset(
+                "Create Course",
+                "name",
+                "initials",
+                "tee_time_link",
+                "website_link",
+                "city",
+                "state",
+                "zip_code",
+                "card",
+                "overview",
+            ),
+            Submit("submit", "Submit", css_class="btn btn-primary btn-sm"),
+        )
+
+    class Meta:
+        model = GolfCourse
+        fields = [
+            "name",
+            "initials",
+            "tee_time_link",
+            "website_link",
+            "city",
+            "state",
+            "zip_code",
+            "card",
+            "overview",
         ]
 
 

@@ -186,9 +186,9 @@ def game_score_detail(request, pk):
     if game_data.status != "completed":
         current_scores = []
         for player_mem in game_data.player_mems:
-            player_holes = models.HoleScore.objects.filter(player=player_mem)
+            player_holes = player_mem.hole_scores
             if filter_scores:
-                player_holes.filter(strokes__gt=0)
+                player_holes = player_holes.filter(strokes__gt=0)
             current_scores.extend(player_holes)
     return render(
         request,
@@ -470,19 +470,21 @@ def edit_hole(request, pk):
 )
 def edit_hole_score(request, pk):
     hole_score_data = get_object_or_404(models.HoleScore, pk=pk)
+    game_id = hole_score_data.player.game.id
     if request.method == "POST":
         form = forms.EditHoleScoreForm(request.POST, instance=hole_score_data)
         if form.is_valid():
             form.save()
             messages.add_message(request, messages.INFO, "Hole score updated.")
-            return redirect("dashboard:hole_score_detail", pk)
+            return redirect("dashboard:game_score_detail", game_id)
     form = forms.EditHoleScoreForm(instance=hole_score_data)
     return render(
         request, "dashboard/edit-hole-score.html",
         {
             "form": form,
             "hole_score_data": hole_score_data,
-            "hole_score_id": pk
+            "hole_score_id": pk,
+            "game_id": game_id
         }
     )
 

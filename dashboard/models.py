@@ -373,13 +373,23 @@ class Game(models.Model):
     def single_pot(self):
         return self.single_cost * self.single_count
 
+    @property
+    def is_completed(self):
+        return bool(self.status == GameStatusChoices.COMPLETED)
+
     def __str__(self):
-        if self.status == GameStatusChoices.COMPLETED:
+        if self.is_completed:
             return f"{self.course}-{self.date_played.date()}"
         return f"{self.course}-{self.status}"
 
     def __repr__(self):
         return f"Game[{str(self).replace('-', ':')}]"
+
+    def __eq__(self, item):
+        if hasattr(item, 'date_played') and /
+                item.date_played.date() == self.date_played.date():
+            return True
+        return False
 
     def set_holes(self, which_holes="all"):
         if self.course.hole_count == 18:
@@ -403,14 +413,6 @@ class Game(models.Model):
             self.game_type = GameTypeChoices.STROKE
         self.save()
 
-    def __league_check(self):
-        _val = False
-        if self.league_game:
-            _val = True
-            if self.holes_to_play == HolesToPlayChoices.HOLES_9:
-                raise ValidationError("You must play 18 holes for league game")
-        return _val
-
     def start(self, **kwargs):
         for key, value in kwargs.items():
             if key == "which_holes":
@@ -420,7 +422,7 @@ class Game(models.Model):
             elif hasattr(self, key):
                 setattr(self, key, value)
                 self.save()
-        self.__league_check()
+        self.clean()
         utils.create_hole_scores_for_game(self)
         if self.use_teams or all([self.use_groups, self.use_teams]):
             utils.create_teams_for_game(self)
@@ -430,23 +432,24 @@ class Game(models.Model):
         self.save()
 
     def stop(self):
-        if self.status != GameStatusChoices.COMPLETED:
+        if not self.is_completed:
             self.score = utils.score_game(self)
             self.status = GameStatusChoices.COMPLETED
             self.save()
 
     def reset(self):
-        if self.status != GameStatusChoices.COMPLETED:
+        if not self.is_completed:
             utils.clean_game(self)
             self.score = None
             self.status = GameStatusChoices.SETUP
             self.save()
 
     def clean(self):
-        self.__league_check()
-        num_holes = self.course.hole_count - self.holes_to_play
-        if num_holes == 9 and self.which_holes == WhichHolesChoices.ALL:
+        super().clean()
+        if self.holes_to_play == 9 and self.which_holes == WhichHolesChoices.ALL:
             raise ValidationError("Please choose front or back")
+        if self.league_game and self.holes_to_play == HolesToPlayChoices.HOLES_9:
+            raise ValidationError("You must play 18 holes for league game")
 
     def delete(self, *args, **kwargs):
         utils.clean_game(self)
@@ -503,16 +506,36 @@ class Player(models.Model):
         return f"{self.first_name} {self.last_name}"
 
     @property
+    def league_scores(self):
+        return LeagueScore.objects.filter(player=self)
+
+    @property
     def league_hcp(self):
-        return utils.calculate_player_league_hcp(self) or self.handicap
+        league_hcp = None
+        league_hcps = list(
+            self.league_scores.filter(
+                course=get_ttcc_course
+            ).values_list('handicap', flat=True)
+        )
+        if league_hcps and len(league_hcps) >= utils.LEAGUE_MIN_HCP_REQUIRED:
+            league_hcp = get_avg(league_hcps, 1)
+        return league_hcp or self.handicap
 
     @property
     def league_points(self):
-        return utils.get_player_item_league_avg(self, 'game_points')
+        league_points = 0
+        league_points = list(
+            self.league_scores.filter(
+                course=get_ttcc_course
+            ).values_list('handicap', flat=True)
+        )
+        if league_hcps and len(league_hcps) >= utils.LEAGUE_MIN_HCP_REQUIRED:
+            league_hcp = get_avg(league_hcps, 1)
+        return league_hcp or self.handicap
 
     @property
     def league_score(self):
-        return utils.get_player_item_league_avg(self, 'game_score')
+        return utils.get_player_item_league_avg(self, 'score')
 
     def __str__(self):
         return self.name
@@ -643,6 +666,13 @@ class PlayerMembership(models.Model):
         blank=True,
         null=True
     )
+    league_score = models.ForeignKey(
+        LeagueScore,
+        on_delete=models.SET_DEFAULT,
+        default=None,
+        blank=True,
+        null=True
+    )
     skins = models.BooleanField(default=False)
     singles = models.BooleanField(default=False)
     game_handicap = models.SmallIntegerField(
@@ -699,26 +729,21 @@ class PlayerMembership(models.Model):
 
     @property
     def is_official(self):
-        if all([
+        if all(
+            [
+                self.game.is_completed,
                 self.game.league_game,
                 self.game_handicap,
                 self.game_points,
                 self.game_score
-            ]) and self.game.status == GameStatusChoices.COMPLETED:
+            ]
+        ):
             return True
         return False
 
     @property
     def name(self):
         return self.player.name
-
-    @property
-    def hole_scores(self):
-        return HoleScore.objects.filter(player=self).order_by("hole")
-
-    @property
-    def points_needed(self):
-        return self.game.points - utils.round_up(self.player.league_hcp)
 
     @property
     def league_hcp(self):
@@ -732,6 +757,14 @@ class PlayerMembership(models.Model):
     def league_score(self):
         return self.player.league_score
 
+    @property
+    def hole_scores(self):
+        return HoleScore.objects.filter(player=self).order_by("hole")
+
+    @property
+    def points_needed(self):
+        return self.game.points - utils.round_up(self.player.league_hcp)
+
     def __str__(self):
         name = f"{self.name}-{self.game}"
         if self.group is not None:
@@ -743,12 +776,24 @@ class PlayerMembership(models.Model):
     def __repr__(self):
         return f"PlayerMembership[{str(self).replace('-', ':')}]"
 
-    def __score_league(self):
-        if self.game.__league_check():
+    def __eq__(self, item):
+        if hasattr(item, 'date_played') and /
+                item.date_played.date() == self.date_played.date():
+            return True
+        return False
+
+    def score_game(self, game_score, game_points, game_hcp):
+        if all([self.game.is_completed, game_score, game_points, game_hcp]):
+            self.game_score = game_score
+            self.game_points = game_points
+            self.game_handicap = game_hcp
+            self.save()
+        if self.is_official:
             score = LeagueScore.objects.create(
-                member=self,
+                date_played=self.game.date,
+                player=self.player,
                 course=self.game.course,
-                handicap=self.game_handicap,
+                handicap_played=self.player.handicap,
                 score=self.game_score,
                 points=self.game_points,
                 random_won=self.random_money,
@@ -757,18 +802,10 @@ class PlayerMembership(models.Model):
             )
             score.save()
 
-
-    def score_game(self, game_score, game_points, game_hcp):
-        if all([game_score, game_points, game_hcp]):
-            self.game_score = game_score
-            self.game_points = game_points
-            self.game_handicap = game_hcp
-            self.save()
-        self.__score_league()
-
     def delete(self, *args, **kwargs):
         if self.is_official:
-            utils.revert_player_hcp(self.player, self.game_handicap)
+            league_score = LeagueScore.objects.filter(date_played=self.game.date, player=self.player).first()
+            league_score.delete()
         super().delete(*args, **kwargs)
 
     # def save(self, *args, **kwargs):
@@ -781,22 +818,14 @@ class PlayerMembership(models.Model):
 
 
 class LeagueScore(models.Model):
+    date_played = models.DateTimeField(default=timezone.now)
     player = models.ForeignKey(Player, on_delete=models.CASCADE)
     course = models.ForeignKey(
         GolfCourse,
         on_delete=models.PROTECT,
         default=get_ttcc_course,
     )
-    handicap_played = models.SmallIntegerField(
-        default=None,
-        blank=True,
-        null=True
-    )
-    handicap_adjustment = models.SmallIntegerField(
-        default=None,
-        blank=True,
-        null=True
-    )
+    handicap_played = models.SmallIntegerField(default=player.handicap)
     score = models.SmallIntegerField(
         default=None,
         blank=True,
@@ -845,14 +874,39 @@ class LeagueScore(models.Model):
     )
 
     @property
+    def date(self):
+        return self.date_played.date()
+
+    @property
+    def handicap(self):
+        return self.course.par - self.score
+
+    @property
     def points_needed(self):
-        return self.course.points - utils.round_up(self.handicap_played or 20)
+        return self.course.points - utils.round_up(self.handicap_played)
+
+    def is_game_score(self, game):
+        if self.date_played == game.date_played:
+            return True
+        return False
 
     def __str__(self):
-        return self.player.name
+        return f"{self.player.name}-{self.date}"
 
     def __repr__(self):
         return f"LeagueScore[{str(self)}-{self.date}]"
+
+    def __eq__(self, item):
+        if hasattr(item, 'date_played') and /
+                item.date_played.date() == self.date_played.date():
+            return True
+        return False
+
+    # def delete(self, *args, **kwargs):
+    #     if self.player.handicap != self.handicap_played:
+    #         self.player.handicap = self.handicap_played
+    #         self.player.save()
+    #     super().delete(*args, **kwargs)
 
 
 class HoleScore(models.Model):
@@ -907,7 +961,7 @@ class HoleScore(models.Model):
             self.save()
 
     def reset_score(self):
-        if self.is_scored:
+        if self.strokes != StrokeChoices._0:
             self.strokes = StrokeChoices._0
             self.save()
 
@@ -919,7 +973,7 @@ class HoleScore(models.Model):
 
 class TeeTime(models.Model):
     course = models.ForeignKey(GolfCourse, on_delete=models.CASCADE)
-    tee_time = models.DateTimeField()
+    tee_time = models.DateTimeField(default=timezone.now)
     players = models.ManyToManyField("Player")
     holes_to_play = models.PositiveSmallIntegerField(
         choices=HolesToPlayChoices.choices,
